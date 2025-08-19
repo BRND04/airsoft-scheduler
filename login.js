@@ -32,7 +32,7 @@ loginForm.addEventListener('submit', async (event) => {
             data: { 
                 username: username 
             },
-            emailRedirectTo: `${window.location.origin}/scheduler.html`,
+            emailRedirectTo: `${window.location.origin}/airsoft-scheduler/scheduler.html`,
         },
     });
 
@@ -44,3 +44,4 @@ loginForm.addEventListener('submit', async (event) => {
         messageDisplay.textContent = 'Success! Check your email for the magic link.';
     }
 });
+
