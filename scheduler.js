@@ -1,6 +1,6 @@
 // --- 1. SET UP SUPABASE ---
 const SUPABASE_URL = 'https://foqlzzkmuorokqsqjtbk.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI_NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcWx6emttdW9yb2txc3FqdGJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2MzUwNjksImV4cCI6MjA3MTIxMTA2OX0.einCfTr3Cta51n3fOOET4Hz6p0KtRHy5NAoDTCgIbBg';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcWx6emttdW9yb2txc3FqdGJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2MzUwNjksImV4cCI6MjA3MTIxMTA2OX0.einCfTr3Cta51n3fOOET4Hz6p0KtRHy5NAoDTCgIbBg';
 const supaClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- 2. GRAB HTML ELEMENTS ---
@@ -12,7 +12,7 @@ const cancelEditBtn = document.getElementById('cancel-edit-btn');
 const reasonModal = document.getElementById('reason-modal');
 const reasonForm = document.getElementById('reason-form');
 const cancelReasonBtn = document.getElementById('cancel-reason-btn');
-// New elements for collapsible form
+// Elements for collapsible form
 const formHeader = addGameForm.querySelector('.form-header');
 let currentUser = null;
 
@@ -28,9 +28,17 @@ supaClient.auth.onAuthStateChange((event, session) => {
     }
 });
 
-// --- 4. COLLAPSIBLE FORM LOGIC ---
-formHeader.addEventListener('click', () => {
-    addGameForm.classList.toggle('collapsed');
+// --- 4. COLLAPSIBLE FORM LOGIC (CORRECTED) ---
+// We add the listener to the header, but check if the click was on the button itself.
+formHeader.addEventListener('click', (e) => {
+    // Only toggle if the click was NOT on the button inside the header.
+    // This prevents the form from collapsing when you click the icon.
+    if (e.target.closest('button')) {
+        addGameForm.classList.toggle('collapsed');
+    } else if (e.target.closest('h2')) {
+        // Also allow clicking the title to collapse
+        addGameForm.classList.toggle('collapsed');
+    }
 });
 
 
@@ -209,6 +217,7 @@ gamesList.addEventListener('click', async (e) => {
 // --- 8. ADD A NEW GAME ---
 addGameForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    console.log("Add game form submitted!"); // Debugging line
     const formData = new FormData(addGameForm);
     const newGame = {
         date: formData.get('date'), location: formData.get('location'), description: formData.get('description'),
