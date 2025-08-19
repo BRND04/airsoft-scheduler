@@ -1,6 +1,6 @@
 // --- 1. SET UP SUPABASE ---
 const SUPABASE_URL = 'https://foqlzzkmuorokqsqjtbk.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcWx6emttdW9yb2txc3FqdGJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2MzUwNjksImV4cCI6MjA3MTIxMTA2OX0.einCfTr3Cta51n3fOOET4Hz6p0KtRHy5NAoDTCgIbBg';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI_NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvcWx6emttdW9yb2txc3FqdGJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2MzUwNjksImV4cCI6MjA3MTIxMTA2OX0.einCfTr3Cta51n3fOOET4Hz6p0KtRHy5NAoDTCgIbBg';
 const supaClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- 2. GRAB HTML ELEMENTS ---
@@ -12,6 +12,8 @@ const cancelEditBtn = document.getElementById('cancel-edit-btn');
 const reasonModal = document.getElementById('reason-modal');
 const reasonForm = document.getElementById('reason-form');
 const cancelReasonBtn = document.getElementById('cancel-reason-btn');
+// New elements for collapsible form
+const formHeader = addGameForm.querySelector('.form-header');
 let currentUser = null;
 
 // --- 3. AUTHENTICATION & INITIAL LOAD ---
@@ -26,7 +28,13 @@ supaClient.auth.onAuthStateChange((event, session) => {
     }
 });
 
-// --- 4. FETCH & DISPLAY GAMES ---
+// --- 4. COLLAPSIBLE FORM LOGIC ---
+formHeader.addEventListener('click', () => {
+    addGameForm.classList.toggle('collapsed');
+});
+
+
+// --- 5. FETCH & DISPLAY GAMES ---
 const fetchGames = async () => {
     const { data: games, error } = await supaClient
         .from('games')
@@ -44,7 +52,7 @@ const fetchGames = async () => {
     }
 };
 
-// --- 5. RENDER A SINGLE GAME CARD ---
+// --- 6. RENDER A SINGLE GAME CARD ---
 const renderGameCard = (game) => {
     const availability = game.availability || { going: [], maybe: [], cant_make_it: [] };
     const username = currentUser.user_metadata.username;
@@ -97,8 +105,6 @@ const renderGameCard = (game) => {
         </div>
     `;
 
-    // --- LOGIC CHANGE HERE ---
-    // The booking section now only shows if the user is going AND their 'booked' status is false.
     const bookingSection = (currentUserGoing && !currentUserGoing.booked) ? `
         <div class="booking-confirmation">
             <h4 class="card-section-heading">Have you booked yet?</h4>
@@ -134,23 +140,21 @@ const renderGameCard = (game) => {
     `;
 };
 
-// --- 6. EVENT LISTENERS (CORRECTED) ---
+// --- 7. EVENT LISTENERS ---
 gamesList.addEventListener('click', async (e) => {
     const target = e.target.closest('button');
     if (!target) return;
     const gameId = target.dataset.id;
     if (!gameId) return;
 
-    // --- RESTORED: Delete Logic ---
     if (target.classList.contains('delete-btn')) {
         if (confirm('Are you sure you want to delete this game?')) {
             await supaClient.from('games').delete().match({ id: gameId });
             fetchGames();
         }
-        return; // Stop after handling
+        return;
     }
 
-    // --- RESTORED: Edit Logic ---
     if (target.classList.contains('edit-btn')) {
         const { data: game } = await supaClient.from('games').select('*').eq('id', gameId).single();
         document.getElementById('edit-game-id').value = game.id;
@@ -158,10 +162,9 @@ gamesList.addEventListener('click', async (e) => {
         document.getElementById('edit-game-location').value = game.location;
         document.getElementById('edit-game-description').value = game.description;
         editModal.style.display = 'flex';
-        return; // Stop after handling
+        return;
     }
 
-    // --- Booking Button Logic ---
     if (target.classList.contains('yes-btn')) {
         const { data: game } = await supaClient.from('games').select('availability').eq('id', gameId).single();
         const availability = game.availability;
@@ -171,17 +174,15 @@ gamesList.addEventListener('click', async (e) => {
             await supaClient.from('games').update({ availability }).match({ id: gameId });
             fetchGames();
         }
-        return; // Stop after handling
+        return;
     }
 
-    // --- Availability Logic ---
     if (target.classList.contains('availability-btn')) {
         const status = target.dataset.status;
         const username = currentUser.user_metadata.username;
         const { data: game } = await supaClient.from('games').select('availability').eq('id', gameId).single();
         const availability = game.availability;
 
-        // Remove user from all lists first
         availability.going = availability.going.filter(p => p.name !== username);
         availability.maybe = availability.maybe.filter(name => name !== username);
         availability.cant_make_it = availability.cant_make_it.filter(p => p.name !== username);
@@ -196,7 +197,7 @@ gamesList.addEventListener('click', async (e) => {
             } else if (status === 'cant_make_it') {
                 document.getElementById('reason-game-id').value = gameId;
                 reasonModal.style.display = 'flex';
-                return; // Stop execution until reason is submitted
+                return;
             }
         }
 
@@ -205,7 +206,7 @@ gamesList.addEventListener('click', async (e) => {
     }
 });
 
-// --- 7. ADD A NEW GAME ---
+// --- 8. ADD A NEW GAME ---
 addGameForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(addGameForm);
@@ -219,7 +220,7 @@ addGameForm.addEventListener('submit', async (event) => {
     fetchGames();
 });
 
-// --- 8. EDIT MODAL LOGIC ---
+// --- 9. EDIT MODAL LOGIC ---
 editGameForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const gameId = document.getElementById('edit-game-id').value;
@@ -234,7 +235,7 @@ editGameForm.addEventListener('submit', async (e) => {
 });
 cancelEditBtn.addEventListener('click', () => { editModal.style.display = 'none'; });
 
-// --- 9. REASON MODAL LOGIC ---
+// --- 10. REASON MODAL LOGIC ---
 reasonForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const gameId = document.getElementById('reason-game-id').value;
