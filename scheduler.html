@@ -6,10 +6,10 @@
     <title>Airsoft Game Day Scheduler</title>
     <link rel="stylesheet" href="style.css">
     <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -21,20 +21,30 @@
         </div>
 
         <form id="add-game-form">
-            <h2>Schedule a New Game</h2>
-            <div class="form-group">
-                <label for="game-date">Date</label>
-                <input type="date" id="game-date" name="date" required>
+            <!-- NEW: Form Header for Collapse Button -->
+            <div class="form-header">
+                <h2>Schedule a New Game</h2>
+                <button type="button" id="collapse-form-btn" class="icon-button" title="Toggle Form">
+                    <i class="fas fa-chevron-up"></i>
+                </button>
             </div>
-            <div class="form-group">
-                <label for="game-location">Location / Site</label>
-                <input type="text" id="game-location" name="location" placeholder="e.g., Section 8" required>
+
+            <!-- NEW: Wrapper for Form Content -->
+            <div class="form-content">
+                <div class="form-group">
+                    <label for="game-date">Date</label>
+                    <input type="date" id="game-date" name="date" required>
+                </div>
+                <div class="form-group">
+                    <label for="game-location">Location / Site</label>
+                    <input type="text" id="game-location" name="location" placeholder="e.g., Section 8" required>
+                </div>
+                <div class="form-group">
+                    <label for="game-description">Description / Notes</label>
+                    <textarea id="game-description" name="description" placeholder="e.g., Bring pyro, £25 entry"></textarea>
+                </div>
+                <button type="submit">Add Game Day</button>
             </div>
-            <div class="form-group">
-                <label for="game-description">Description / Notes</label>
-                <textarea id="game-description" name="description" placeholder="e.g., Bring pyro, £25 entry"></textarea>
-            </div>
-            <button type="submit">Add Game Day</button>
         </form>
 
         <section class="games-container">
@@ -71,7 +81,7 @@
         </div>
     </div>
 
-    <!-- NEW: Reason for Absence Modal -->
+    <!-- Reason for Absence Modal -->
     <div id="reason-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <h2>Reason for Absence</h2>
