@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airsoft Game Day Scheduler</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome for icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <main>
+        <div class="header-bar">
+            <h1>Airsoft Game Day Scheduler</h1>
+            <div id="user-display"></div>
+        </div>
+
+        <form id="add-game-form">
+            <h2>Schedule a New Game</h2>
+            <div class="form-group">
+                <label for="game-date">Date</label>
+                <input type="date" id="game-date" name="date" required>
+            </div>
+            <div class="form-group">
+                <label for="game-location">Location / Site</label>
+                <input type="text" id="game-location" name="location" placeholder="e.g., Section 8" required>
+            </div>
+            <div class="form-group">
+                <label for="game-description">Description / Notes</label>
+                <textarea id="game-description" name="description" placeholder="e.g., Bring pyro, £25 entry"></textarea>
+            </div>
+            <button type="submit">Add Game Day</button>
+        </form>
+
+        <section class="games-container">
+            <h2>Upcoming Games</h2>
+            <div id="games-list">
+                <!-- Game cards will be dynamically inserted here by JavaScript -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Edit Game Modal -->
+    <div id="edit-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h2>Edit Game</h2>
+            <form id="edit-game-form">
+                <input type="hidden" id="edit-game-id">
+                <div class="form-group">
+                    <label for="edit-game-date">Date</label>
+                    <input type="date" id="edit-game-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-game-location">Location / Site</label>
+                    <input type="text" id="edit-game-location" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-game-description">Description / Notes</label>
+                    <textarea id="edit-game-description"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="button-primary">Save Changes</button>
+                    <button type="button" id="cancel-edit-btn" class="button-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NEW: Reason for Absence Modal -->
+    <div id="reason-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h2>Reason for Absence</h2>
+            <form id="reason-form">
+                <input type="hidden" id="reason-game-id">
+                <div class="form-group">
+                    <label for="absence-reason">Please provide a reason (optional)</label>
+                    <input type="text" id="absence-reason" placeholder="e.g., Working, on holiday, etc.">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="button-primary">Confirm</button>
+                    <button type="button" id="cancel-reason-btn" class="button-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script src="scheduler.js"></script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+/* ========================================
+  MAIN VARIABLES AND GLOBAL STYLES
+  ========================================
+*/
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+:root {
+    --background-color: #4c4e4b;
+    --card-color: #131313;
+    --primary-accent: #f6a319;   /* Orange/Gold */
+    --secondary-accent: #2e482c; /* Green */
+    --primary-text-color: #f0f0f0;
+    --secondary-text-color: #a0a0a0;
+    --border-color: #2a2a2a;
+    --danger-color: #a43a3a;
+}
+
+body {
+    /* --- FONT CHANGE HERE --- */
+    font-family: 'Nunito', sans-serif;
+    background-color: var(--background-color);
+    color: var(--primary-text-color);
+    margin: 0;
+    padding: 2rem;
+    line-height: 1.6;
+}
+
+main {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+h1, h2, h3, h4 {
+    color: #ffffff;
+    margin-top: 0;
+}
+
+h2 {
+    border-bottom: 2px solid var(--primary-accent);
+    padding-bottom: 10px;
+}
+
+/* ========================================
+  FORM & BUTTON STYLES
+  ========================================
+*/
+form {
+    background-color: var(--card-color);
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 3rem;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.form-group { margin-bottom: 1.5rem; }
+label { display: block; margin-bottom: 0.5rem; color: var(--secondary-text-color); font-weight: 700; } /* Bolder labels */
+input[type="text"], input[type="date"], input[type="email"], textarea {
+    width: 100%; padding: 12px; background-color: #2a2a2a; border: 1px solid var(--border-color);
+    border-radius: 8px; color: var(--primary-text-color); font-size: 16px; box-sizing: border-box;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    font-family: 'Nunito', sans-serif; /* Ensure inputs use the font */
+}
+input[type="text"]:focus, input[type="date"]:focus, input[type="email"]:focus, textarea:focus {
+    outline: none; border-color: var(--primary-accent); box-shadow: 0 0 0 3px rgba(246, 163, 25, 0.3);
+}
+button { font-family: inherit; font-size: 1rem; cursor: pointer; border-radius: 8px; border: none; padding: 0.8rem 1.5rem; transition: all 0.2s ease-in-out; }
+button[type="submit"] {
+    width: 100%; padding: 14px; background: var(--primary-accent);
+    color: #131313; font-size: 18px; font-weight: 700; /* Use bold font weight */
+}
+button[type="submit"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(246, 163, 25, 0.2); }
+
+/* ========================================
+  GAME CARD STYLES
+  ========================================
+*/
+#games-list { display: grid; gap: 1.5rem; }
+.game-card {
+    background-color: var(--card-color); padding: 1.5rem; border-radius: 12px;
+    border-left: 5px solid var(--primary-accent); position: relative;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 0.5s ease-out forwards;
+    transition: transform 0.3s ease-in-out;
+}
+.game-card:hover {
+    transform: translateY(-5px);
+}
+
+.game-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.game-card-actions {
+    position: absolute; top: 1.5rem; right: 1.5rem; z-index: 10;
+    display: flex; gap: 0.75rem;
+}
+.icon-button {
+    background: rgba(42, 42, 42, 0.7); border: 1px solid var(--border-color); color: var(--secondary-text-color);
+    font-size: 1rem; cursor: pointer; padding: 0.5rem; border-radius: 8px;
+    width: 40px; height: 40px; display: flex; justify-content: center; align-items: center;
+}
+.icon-button:hover { color: #ffffff; background-color: var(--primary-accent); transform: scale(1.1); }
+.icon-button i { pointer-events: none; }
+
+.card-section-heading {
+    font-size: 0.9rem;
+    color: var(--secondary-text-color);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
+.game-notes { margin-top: 1rem; }
+.game-notes p {
+    color: var(--primary-text-color); white-space: pre-wrap;
+    background-color: #2a2a2a; padding: 1rem; border-radius: 8px; margin: 0;
+}
+
+/* --- Availability Section --- */
+.availability-section { margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; }
+.availability-controls { display: flex; justify-content: space-around; gap: 1rem; margin-bottom: 1.5rem; }
+.availability-btn { flex: 1; padding: 0.75rem; font-weight: 700; border: 2px solid transparent; }
+.availability-btn.going { background-color: var(--secondary-accent); color: white; }
+.availability-btn.maybe { background-color: var(--primary-accent); color: #131313; }
+.availability-btn.cant-make-it { background-color: var(--danger-color); color: white; }
+.availability-btn.selected { transform: scale(1.05); box-shadow: 0 0 15px rgba(255, 255, 255, 0.2); border-color: white; }
+
+.availability-display { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
+.status-column h4 { margin-bottom: 0.5rem; padding-bottom: 0.5rem; font-weight: 700; }
+.status-column.going h4 { border-bottom: 2px solid var(--secondary-accent); }
+.status-column.maybe h4 { border-bottom: 2px solid var(--primary-accent); }
+.status-column.cant-make-it h4 { border-bottom: 2px solid var(--danger-color); }
+.attendee-list { list-style: none; padding: 0; margin: 0; }
+.attendee-list li { background-color: #2a2a2a; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.9rem; position: relative; }
+
+/* --- Tooltip Styles --- */
+.attendee-list li[data-tooltip]::after,
+.attendee-list li[data-tooltip]::before {
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease-in-out;
+    position: absolute; left: 50%; transform: translateX(-50%); z-index: 100;
+}
+.attendee-list li[data-tooltip]::after {
+    content: attr(data-tooltip); background: #131313; color: #f0f0f0; border: 1px solid var(--border-color);
+    padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.9rem; white-space: nowrap; bottom: 125%;
+}
+.attendee-list li[data-tooltip]::before {
+    content: ''; border-style: solid; border-width: 8px 8px 0 8px;
+    border-color: #131313 transparent transparent transparent; bottom: calc(125% - 8px);
+}
+.attendee-list li[data-tooltip]:hover::after,
+.attendee-list li[data-tooltip]:hover::before { opacity: 1; }
+
+/* ========================================
+  MODAL & HEADER STYLES
+  ========================================
+*/
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+.modal-content { background: var(--card-color); padding: 2rem; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 0 5px 20px rgba(0,0,0,0.4); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; }
+.button-primary { background-color: var(--primary-accent); color: #131313; font-weight: 700; }
+.button-secondary { background-color: #555; color: white; font-weight: 700; }
+
+.header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; }
+#user-display { font-size: 1rem; color: var(--secondary-text-color); background-color: var(--card-color); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); }
+
+/* --- Alignment Fix --- */
+.header-bar h1 {
+    margin-bottom: 0;
+}
+
+/* --- Countdown Styles --- */
+.countdown-wrapper {
+    margin: 1rem 0;
+}
+.game-countdown {
+    background-color: #2a2a2a; border-radius: 8px; padding: 0.75rem 1rem;
+    text-align: center; font-size: 1.25rem; font-weight: 700; color: var(--primary-accent);
+    border: 1px solid var(--border-color);
+}
+.game-countdown span { display: inline-block; margin: 0 0.5rem; color: var(--primary-text-color); }
+.game-countdown span:first-child { color: var(--primary-accent); }
+
+/* ========================================
+  BOOKING CONFIRMATION STYLES
+  ========================================
+*/
+.booking-confirmation {
+    margin-top: 1rem;
+    background-color: #2a2a2a;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.booking-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.booking-btn {
+    flex: 1;
+    padding: 0.75rem;
+    font-weight: 700;
+    border-radius: 8px;
+    text-align: center;
+    text-decoration: none;
+    transition: all 0.2s ease-in-out;
+}
+
+.booking-btn.yes-btn {
+    background-color: var(--secondary-accent);
+    color: white;
+    border: 2px solid var(--secondary-accent);
+}
+
+.booking-btn.yes-btn.booked {
+    background-color: transparent;
+    color: var(--secondary-accent);
+}
+
+.booking-btn.no-btn {
+    background-color: transparent;
+    color: var(--primary-accent);
+    border: 2px solid var(--primary-accent);
+}
+.booking-btn.no-btn:hover {
+    background-color: var(--primary-accent);
+    color: #131313;
+}
+
+.booking-icon {
+    color: var(--secondary-accent);
+    margin-left: 0.5rem;
+}
