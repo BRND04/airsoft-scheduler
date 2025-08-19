@@ -19,7 +19,6 @@
 }
 
 body {
-    /* --- FONT CHANGE HERE --- */
     font-family: 'Nunito', sans-serif;
     background-color: var(--background-color);
     color: var(--primary-text-color);
@@ -54,14 +53,53 @@ form {
     margin-bottom: 3rem;
     border: 1px solid var(--border-color);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    overflow: hidden; /* Needed for the collapse transition */
 }
+
+/* --- NEW: Styles for Collapsible Form --- */
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer; /* Make the whole header clickable */
+}
+
+.form-header h2 {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+#collapse-form-btn i {
+    transition: transform 0.3s ease-in-out;
+}
+
+.form-content {
+    transition: max-height 0.4s ease-in-out, opacity 0.3s ease-in-out, margin-top 0.4s ease-in-out;
+    max-height: 1000px; /* Large enough to not clip content */
+    opacity: 1;
+    overflow: hidden;
+    margin-top: 1.5rem;
+}
+
+form.collapsed .form-content {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
+
+form.collapsed #collapse-form-btn i {
+    transform: rotate(180deg);
+}
+/* --- End New Styles --- */
+
+
 .form-group { margin-bottom: 1.5rem; }
-label { display: block; margin-bottom: 0.5rem; color: var(--secondary-text-color); font-weight: 700; } /* Bolder labels */
+label { display: block; margin-bottom: 0.5rem; color: var(--secondary-text-color); font-weight: 700; }
 input[type="text"], input[type="date"], input[type="email"], textarea {
     width: 100%; padding: 12px; background-color: #2a2a2a; border: 1px solid var(--border-color);
     border-radius: 8px; color: var(--primary-text-color); font-size: 16px; box-sizing: border-box;
-    transition: border-color 0.3s, box-shadow 0.3s;
-    font-family: 'Nunito', sans-serif; /* Ensure inputs use the font */
+    font-family: 'Nunito', sans-serif;
 }
 input[type="text"]:focus, input[type="date"]:focus, input[type="email"]:focus, textarea:focus {
     outline: none; border-color: var(--primary-accent); box-shadow: 0 0 0 3px rgba(246, 163, 25, 0.3);
@@ -69,7 +107,7 @@ input[type="text"]:focus, input[type="date"]:focus, input[type="email"]:focus, t
 button { font-family: inherit; font-size: 1rem; cursor: pointer; border-radius: 8px; border: none; padding: 0.8rem 1.5rem; transition: all 0.2s ease-in-out; }
 button[type="submit"] {
     width: 100%; padding: 14px; background: var(--primary-accent);
-    color: #131313; font-size: 18px; font-weight: 700; /* Use bold font weight */
+    color: #131313; font-size: 18px; font-weight: 700;
 }
 button[type="submit"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(246, 163, 25, 0.2); }
 
@@ -164,7 +202,6 @@ button[type="submit"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20p
 .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; }
 #user-display { font-size: 1rem; color: var(--secondary-text-color); background-color: var(--card-color); padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border-color); }
 
-/* --- Alignment Fix --- */
 .header-bar h1 {
     margin-bottom: 0;
 }
