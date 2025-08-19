@@ -16,17 +16,26 @@ const cancelReasonBtn = document.getElementById('cancel-reason-btn');
 const formHeader = addGameForm.querySelector('.form-header');
 let currentUser = null;
 
-// --- 3. AUTHENTICATION & INITIAL LOAD ---
+// --- 3. AUTHENTICATION & INITIAL LOAD (CORRECTED) ---
 supaClient.auth.onAuthStateChange((event, session) => {
-    if (!session) {
+    // This is the key fix. We only redirect if there's no session AND
+    // the user isn't in the middle of a magic link login.
+    if (!session && !window.location.hash.includes('access_token')) {
+        console.log("No session found, redirecting to login.");
         window.location.href = 'index.html';
-    } else {
+    } 
+    // If there IS a session, the user is logged in.
+    else if (session) {
         currentUser = session.user;
         document.getElementById('user-display').textContent = `Signed in as: ${currentUser.user_metadata.username}`;
         fetchGames();
         setInterval(fetchGames, 10000); 
     }
+    // If there's no session BUT there is an access token, we do nothing.
+    // We simply wait for Supabase to finish its work, which will trigger
+    // this function again with a valid session.
 });
+
 
 // --- 4. COLLAPSIBLE FORM LOGIC (CORRECTED) ---
 // We add the listener to the header, but check if the click was on the button itself.
@@ -264,3 +273,4 @@ cancelReasonBtn.addEventListener('click', () => {
     reasonForm.reset();
     reasonModal.style.display = 'none'; 
 });
+
