@@ -21,7 +21,6 @@
         </div>
 
         <form id="add-game-form">
-            <!-- NEW: Form Header for Collapse Button -->
             <div class="form-header">
                 <h2>Schedule a New Game</h2>
                 <button type="button" id="collapse-form-btn" class="icon-button" title="Toggle Form">
@@ -29,19 +28,21 @@
                 </button>
             </div>
 
-            <!-- NEW: Wrapper for Form Content -->
             <div class="form-content">
                 <div class="form-group">
                     <label for="game-date">Date</label>
                     <input type="date" id="game-date" name="date" required>
                 </div>
                 <div class="form-group">
-                    <label for="game-location">Location / Site</label>
-                    <input type="text" id="game-location" name="location" placeholder="e.g., Section 8" required>
+                    <label for="game-location">Site</label>
+                    <select id="game-location" name="location" required>
+                        <option value="AREA 66">AREA 66</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label for="game-description">Description / Notes</label>
-                    <textarea id="game-description" name="description" placeholder="e.g., Bring pyro, £25 entry"></textarea>
+                    <label for="game-description">Notes</label>
+                    <!-- PLACEHOLDER ADDED HERE -->
+                    <textarea id="game-description" name="description" placeholder="Any notes to add?"></textarea>
                 </div>
                 <button type="submit">Add Game Day</button>
             </div>
@@ -66,12 +67,15 @@
                     <input type="date" id="edit-game-date" required>
                 </div>
                 <div class="form-group">
-                    <label for="edit-game-location">Location / Site</label>
-                    <input type="text" id="edit-game-location" required>
+                    <label for="edit-game-location">Site</label>
+                    <select id="edit-game-location" required>
+                        <option value="AREA 66">AREA 66</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label for="edit-game-description">Description / Notes</label>
-                    <textarea id="edit-game-description"></textarea>
+                    <label for="edit-game-description">Notes</label>
+                    <!-- PLACEHOLDER ADDED HERE -->
+                    <textarea id="edit-game-description" placeholder="Any notes to add?"></textarea>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="button-primary">Save Changes</button>
