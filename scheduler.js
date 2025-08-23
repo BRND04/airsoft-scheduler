@@ -229,26 +229,63 @@ const generateAvailabilityContent = (availability, gameId) => {
 
 // --- 10. LOCATION SHARING LOGIC ---
 const startSharing = async (gameId) => {
-    if (locationInterval) clearInterval(locationInterval);
-    
-    const { data } = await supaClient.from('live_locations').select('status').eq('game_id', gameId).eq('user_id', currentUser.id).maybeSingle();
-    let currentStatus = data?.status || 'initial';
+  if (locationInterval) clearInterval(locationInterval);
 
-    const share = () => {
-        navigator.geolocation.getCurrentPosition(async (position) => {
-            const { latitude, longitude } = position.coords;
-            const update = { game_id: gameId, user_id: currentUser.id, username: currentUser.user_metadata.username, lat: latitude, lng: longitude, status: currentStatus };
-            
-            await supaClient.from('live_locations').upsert(update, { onConflict: 'game_id, user_id' });
-            getRoute(gameId, { lat: latitude, lng: longitude }, currentStatus);
+  // Always start fresh: first stop is Grant
+  let currentStatus = 'initial';
+  await supaClient.from('live_locations').upsert(
+    {
+      game_id: gameId,
+      user_id: currentUser.id,
+      username: currentUser.user_metadata.username,
+      status: currentStatus
+    },
+    { onConflict: 'game_id, user_id' }
+  );
 
-            const channel = supaClient.channel(`game-${gameId}`);
-            channel.send({ type: 'broadcast', event: 'location_update', payload: { ...update } });
-        }, (error) => { console.error("Geolocation error:", error); alert("Could not get location."); stopSharing(); }, { enableHighAccuracy: true });
-    };
-    share();
-    locationInterval = setInterval(share, 10000);
+  // Sync buttons with this status (safety)
+  const controls = document.querySelector(`#game-${gameId} .location-controls`);
+  if (controls) {
+    const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
+    const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
+    if (btnGrant) btnGrant.style.display = 'flex';
+    if (btnLuc)   btnLuc.style.display   = 'none';
+  }
+
+  // Reuse a single channel instance for broadcasts
+  const channel = supaClient.channel(`game-${gameId}`);
+
+  const share = () => {
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      const { latitude, longitude } = coords;
+
+      const update = {
+        game_id: gameId,
+        user_id: currentUser.id,
+        username: currentUser.user_metadata.username,
+        lat: latitude,
+        lng: longitude,
+        status: currentStatus
+      };
+
+      await supaClient.from('live_locations').upsert(update, { onConflict: 'game_id, user_id' });
+
+      // Route for the CURRENT leg (Grant first)
+      getRoute(gameId, { lat: latitude, lng: longitude }, currentStatus);
+
+      // Broadcast so others update immediately
+      channel.send({ type: 'broadcast', event: 'location_update', payload: update });
+    }, (err) => {
+      console.error('Geolocation error:', err);
+      alert('Could not get location.');
+      stopSharing();
+    }, { enableHighAccuracy: true, maximumAge: 0 });
+  };
+
+  share();
+  locationInterval = setInterval(share, 10000);
 };
+
 
 const stopSharing = () => {
     if (locationInterval) {
@@ -260,96 +297,146 @@ const stopSharing = () => {
 
 // --- 11. EVENT LISTENERS ---
 gamesList.addEventListener('click', async (e) => {
-    const target = e.target.closest('button');
-    if (!target) return;
-    const gameId = target.dataset.id;
-    if (!gameId) return;
+  const target = e.target.closest('button');
+  if (!target) return;
+  const gameId = target.dataset.id;
+  if (!gameId) return;
 
-    if (target.classList.contains('start-sharing')) {
-        startSharing(gameId);
-        target.style.display = 'none';
-        target.parentElement.querySelector('.stop-sharing').style.display = 'flex';
-        target.parentElement.querySelector('.pickup[data-status="picked_up_grant"]').style.display = 'flex';
-        return;
-    }
-    if (target.classList.contains('stop-sharing')) {
-        stopSharing();
-        target.style.display = 'none';
-        target.previousElementSibling.style.display = 'flex';
-        target.parentElement.querySelectorAll('.pickup').forEach(btn => btn.style.display = 'none');
-        return;
-    }
-    
-    if (target.classList.contains('pickup')) {
-        const newStatus = target.dataset.status;
-        await supaClient.from('live_locations').update({ status: newStatus }).eq('game_id', gameId).eq('user_id', currentUser.id);
-        
-        target.style.display = 'none';
-        if (newStatus === 'picked_up_grant') {
-            target.parentElement.querySelector('.pickup[data-status="picked_up_luc"]').style.display = 'flex';
-        }
-        startSharing(gameId); // Trigger a share to update the route
-        return;
-    }
-    
-    if (target.classList.contains('delete-btn')) {
-        if (confirm('Are you sure you want to delete this game?')) {
-            await supaClient.from('games').delete().match({ id: gameId });
-            document.getElementById(`game-${gameId}`)?.remove();
-        }
-        return;
-    }
+  // Start sharing -> force initial leg to Grant, show correct buttons
+  if (target.classList.contains('start-sharing')) {
+    startSharing(gameId);
+    target.style.display = 'none';
+    const controls = target.parentElement;
+    controls.querySelector('.stop-sharing').style.display = 'flex';
+    const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
+    const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
+    if (btnGrant) btnGrant.style.display = 'flex';
+    if (btnLuc)   btnLuc.style.display   = 'none';
+    return;
+  }
 
-    if (target.classList.contains('edit-btn')) {
-        const { data: game } = await supaClient.from('games').select('*').eq('id', gameId).single();
-        document.getElementById('edit-game-id').value = game.id;
-        document.getElementById('edit-game-date').value = game.date;
-        document.getElementById('edit-game-location').value = game.location;
-        document.getElementById('edit-game-description').value = game.description;
-        editModal.style.display = 'flex';
-        return;
-    }
+  if (target.classList.contains('stop-sharing')) {
+    stopSharing();
+    target.style.display = 'none';
+    target.previousElementSibling.style.display = 'flex';
+    target.parentElement.querySelectorAll('.pickup').forEach(btn => btn.style.display = 'none');
+    return;
+  }
 
-    if (target.classList.contains('yes-btn')) {
-        const { data: game } = await supaClient.from('games').select('availability').eq('id', gameId).single();
-        const availability = game.availability;
-        const userIndex = availability.going.findIndex(p => p.name === currentUser.user_metadata.username);
-        if (userIndex !== -1) {
-            availability.going[userIndex].booked = true;
-            await supaClient.from('games').update({ availability }).match({ id: gameId });
-            fetchGames();
-        }
-        return;
-    }
+  // Pickup buttons: update status, toggle visibility, recompute route (do NOT call startSharing)
+  if (target.classList.contains('pickup')) {
+    const newStatus = target.dataset.status; // 'picked_up_grant' or 'picked_up_luc'
+    target.disabled = true;
 
-    if (target.classList.contains('availability-btn')) {
-        const status = target.dataset.status;
-        const username = currentUser.user_metadata.username;
-        const { data: game } = await supaClient.from('games').select('availability').eq('id', gameId).single();
-        const availability = game.availability;
+    try {
+      // Persist the new leg
+      await supaClient.from('live_locations').upsert(
+        { game_id: gameId, user_id: currentUser.id, status: newStatus },
+        { onConflict: 'game_id, user_id' }
+      );
 
-        availability.going = availability.going.filter(p => p.name !== username);
-        availability.maybe = availability.maybe.filter(name => name !== username);
-        availability.cant_make_it = availability.cant_make_it.filter(p => p.name !== username);
+      // Toggle which pickup buttons are visible
+      const controls = target.closest('.location-controls');
+      const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
+      const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
 
-        const isSelected = target.classList.contains('selected');
+      if (newStatus === 'picked_up_grant') {
+        if (btnGrant) btnGrant.style.display = 'none';
+        if (btnLuc)   btnLuc.style.display   = 'flex';   // next: Luc
+      } else if (newStatus === 'picked_up_luc') {
+        if (btnGrant) btnGrant.style.display = 'none';
+        if (btnLuc)   btnLuc.style.display   = 'none';   // final leg to site
+      }
 
-        if (!isSelected) {
-            if (status === 'going') {
-                availability.going.push({ name: username, booked: false });
-            } else if (status === 'maybe') {
-                availability.maybe.push(username);
-            } else if (status === 'cant_make_it') {
-                document.getElementById('reason-game-id').value = gameId;
-                reasonModal.style.display = 'flex';
-                return;
+      // Recompute the route once with the updated status (no reset)
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => {
+          const lat = coords.latitude, lng = coords.longitude;
+          getRoute(gameId, { lat, lng }, newStatus);
+
+          // Broadcast so others update immediately
+          const channel = supaClient.channel(`game-${gameId}`);
+          channel.send({
+            type: 'broadcast',
+            event: 'location_update',
+            payload: {
+              game_id: gameId,
+              user_id: currentUser.id,
+              username: currentUser.user_metadata.username,
+              lat, lng, status: newStatus
             }
-        }
-
-        await supaClient.from('games').update({ availability }).match({ id: gameId });
-        fetchGames();
+          });
+        },
+        (err) => console.error('Geolocation error after pickup:', err),
+        { enableHighAccuracy: true, maximumAge: 0 }
+      );
+    } catch (err) {
+      console.error('Failed to update pickup status:', err);
+    } finally {
+      target.disabled = false;
     }
+    return;
+  }
+
+  if (target.classList.contains('delete-btn')) {
+    if (confirm('Are you sure you want to delete this game?')) {
+      await supaClient.from('games').delete().match({ id: gameId });
+      document.getElementById(`game-${gameId}`)?.remove();
+    }
+    return;
+  }
+
+  if (target.classList.contains('edit-btn')) {
+    const { data: game } = await supaClient.from('games').select('*').eq('id', gameId).single();
+    document.getElementById('edit-game-id').value = game.id;
+    document.getElementById('edit-game-date').value = game.date;
+    document.getElementById('edit-game-location').value = game.location;
+    document.getElementById('edit-game-description').value = game.description;
+    editModal.style.display = 'flex';
+    return;
+  }
+
+  if (target.classList.contains('yes-btn')) {
+    const { data: game } = await supaClient.from('games').select('availability').eq('id', gameId).single();
+    const availability = game.availability;
+    const userIndex = availability.going.findIndex(p => p.name === currentUser.user_metadata.username);
+    if (userIndex !== -1) {
+      availability.going[userIndex].booked = true;
+      await supaClient.from('games').update({ availability }).match({ id: gameId });
+      fetchGames();
+    }
+    return;
+  }
+
+  if (target.classList.contains('availability-btn')) {
+    const status = target.dataset.status;
+    const username = currentUser.user_metadata.username;
+    const { data: game } = await supaClient.from('games').select('availability').eq('id', gameId).single();
+    const availability = game.availability;
+
+    availability.going = availability.going.filter(p => p.name !== username);
+    availability.maybe = availability.maybe.filter(name => name !== username);
+    availability.cant_make_it = availability.cant_make_it.filter(p => p.name !== username);
+
+    const isSelected = target.classList.contains('selected');
+
+    if (!isSelected) {
+      if (status === 'going') {
+        availability.going.push({ name: username, booked: false });
+      } else if (status === 'maybe') {
+        availability.maybe.push(username);
+      } else if (status === 'cant_make_it') {
+        document.getElementById('reason-game-id').value = gameId;
+        reasonModal.style.display = 'flex';
+        return;
+      }
+    }
+
+    await supaClient.from('games').update({ availability }).match({ id: gameId });
+    fetchGames();
+  }
 });
+
 
 // --- 12. ADD A NEW GAME ---
 addGameForm.addEventListener('submit', async (event) => {
