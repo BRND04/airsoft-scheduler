@@ -15,6 +15,9 @@ const cancelReasonBtn = document.getElementById('cancel-reason-btn');
 const formHeader = addGameForm.querySelector('.form-header');
 let currentUser = null;
 
+window._pulseTest = true; // force ETA pulse for testing
+
+
 // --- 3. ROUTING VARIABLES ---
 let locationInterval = null; 
 const AREA_66_COORDS = [55.6080, -4.5055];
@@ -166,8 +169,8 @@ const updateRouteInfo = (gameId, duration, distance, status) => {
   }
 
   const minutes = Math.round(duration / 60);
-  const miles = (distance / 1609.344).toFixed(1); // meters -> miles
-  const color = etaColor(minutes, 40);            // 40 min scale; change if you like
+  const miles   = (distance / 1609.344).toFixed(1); // meters -> miles
+  const color   = etaColor ? etaColor(minutes, 40) : '#f6a319'; // if you added etaColor earlier
 
   let destination = '';
   if (status === 'initial') destination = "Grant's";
@@ -175,10 +178,23 @@ const updateRouteInfo = (gameId, duration, distance, status) => {
   else if (status === 'picked_up_luc') destination = "Area 66";
 
   etaElement.innerHTML = `
-    ETA to ${destination}: 
-    <strong><span class="eta-mins" style="color:${color}">${minutes} mins</span></strong>
-    (${miles} mi)
+    ETA to ${destination}:
+    <strong>
+      <span class="eta-mins" style="color:${color}">${minutes} mins</span>
+    </strong>
+    (<span class="eta-dist">${miles} mi</span>)
   `;
+
+  // Pulse → Flash change
+	const minsEl  = etaElement.querySelector('.eta-mins');
+
+	// Flash the time when <= 3 mins away (or use a dev flag)
+	const shouldFlash = (window._flashTest === true) || minutes <= 3;
+
+	if (minsEl) {
+	  if (shouldFlash) minsEl.classList.add('eta-flash');
+	  else minsEl.classList.remove('eta-flash');
+	}
 };
 
 // --- 9. RENDER/UPDATE CARD FUNCTIONS ---
