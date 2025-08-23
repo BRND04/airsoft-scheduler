@@ -12,69 +12,140 @@ const cancelEditBtn = document.getElementById('cancel-edit-btn');
 const reasonModal = document.getElementById('reason-modal');
 const reasonForm = document.getElementById('reason-form');
 const cancelReasonBtn = document.getElementById('cancel-reason-btn');
-// Elements for collapsible form
 const formHeader = addGameForm.querySelector('.form-header');
 let currentUser = null;
 
-// --- 3. AUTHENTICATION & INITIAL LOAD (CORRECTED) ---
+// --- 3. ROUTING VARIABLES ---
+let locationInterval = null; 
+const AREA_66_COORDS = [55.6080, -4.5055];
+const GRANT_COORDS = [55.58763831240875, -4.489699872812489];
+const LUC_COORDS = [55.5954546248295, -4.444951898993158];
+
+// --- 4. AUTHENTICATION & INITIAL LOAD ---
 supaClient.auth.onAuthStateChange((event, session) => {
-    // This is the key fix. We only redirect if there's no session AND
-    // the user isn't in the middle of a magic link login.
     if (!session && !window.location.hash.includes('access_token')) {
-        console.log("No session found, redirecting to login.");
         window.location.href = 'index.html';
-    } 
-    // If there IS a session, the user is logged in.
-    else if (session) {
+    } else if (session) {
         currentUser = session.user;
         document.getElementById('user-display').textContent = `Signed in as: ${currentUser.user_metadata.username}`;
-        fetchGames();
-        setInterval(fetchGames, 10000); 
+        fetchGames(); // Fetch everything once on load
+        setInterval(updateAllAvailabilities, 10000); // Poll for availability changes
     }
-    // If there's no session BUT there is an access token, we do nothing.
-    // We simply wait for Supabase to finish its work, which will trigger
-    // this function again with a valid session.
 });
 
-
-// --- 4. COLLAPSIBLE FORM LOGIC (CORRECTED) ---
-// We add the listener to the header, but check if the click was on the button itself.
+// --- 5. COLLAPSIBLE FORM LOGIC ---
 formHeader.addEventListener('click', (e) => {
-    // Only toggle if the click was NOT on the button inside the header.
-    // This prevents the form from collapsing when you click the icon.
-    if (e.target.closest('button')) {
-        addGameForm.classList.toggle('collapsed');
-    } else if (e.target.closest('h2')) {
-        // Also allow clicking the title to collapse
+    if (e.target.closest('button') || e.target.closest('h2')) {
         addGameForm.classList.toggle('collapsed');
     }
 });
 
+// --- 6. REALTIME LOCATION LISTENER ---
+const listenForLocations = (gameId) => {
+    const channel = supaClient.channel(`game-${gameId}`);
+    channel
+        .on('broadcast', { event: 'location_update' }, (payload) => {
+            const { username, lat, lng, status } = payload.payload;
+            if (username !== currentUser.user_metadata.username) {
+                // When another user's location is broadcast, just get the new route info
+                getRoute(gameId, { lat, lng }, status);
+            }
+        })
+        .subscribe();
+};
 
-// --- 5. FETCH & DISPLAY GAMES ---
+// --- 7. FETCH & DISPLAY GAMES (RUNS ONCE) ---
 const fetchGames = async () => {
-    const { data: games, error } = await supaClient
-        .from('games')
-        .select('*')
-        .order('date', { ascending: true });
+    const { data: games, error } = await supaClient.from('games').select('*').order('date', { ascending: true });
+    if (error) { console.error('Error fetching games:', error); return; }
 
-    if (error) {
-        console.error('Error fetching games:', error);
+    gamesList.innerHTML = '';
+    if (games.length === 0) {
+        gamesList.innerHTML = '<h3>No upcoming games scheduled.</h3>';
         return;
     }
 
-    const newHtml = games.map(game => renderGameCard(game)).join('');
-    if (document.getElementById('games-list').innerHTML !== newHtml) {
-        document.getElementById('games-list').innerHTML = newHtml || '<h3>No upcoming games scheduled.</h3>';
+    games.forEach(game => {
+        const newCard = createGameCard(game);
+        gamesList.appendChild(newCard);
+        listenForLocations(game.id);
+    });
+};
+
+// --- NEW: LIGHTWEIGHT POLLING FUNCTION ---
+const updateAllAvailabilities = async () => {
+    const { data: games, error } = await supaClient.from('games').select('id, availability');
+    if (error) { console.error('Error polling for availability:', error); return; }
+
+    games.forEach(game => {
+        const cardElement = document.getElementById(`game-${game.id}`);
+        if (cardElement) {
+            updateGameCard(cardElement, game);
+        }
+    });
+};
+
+// --- 8. ROUTING FUNCTIONS (USING OSRM) ---
+const getRoute = async (gameId, startCoords, status) => {
+    let waypoints = `${startCoords.lng},${startCoords.lat}`;
+    if (status === 'initial') {
+        waypoints += `;${GRANT_COORDS[1]},${GRANT_COORDS[0]};${LUC_COORDS[1]},${LUC_COORDS[0]};${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+    } else if (status === 'picked_up_grant') {
+        waypoints += `;${LUC_COORDS[1]},${LUC_COORDS[0]};${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+    } else if (status === 'picked_up_luc') {
+        waypoints += `;${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+    } else {
+        updateRouteInfo(gameId, 0, 0, 'finished');
+        return;
+    }
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=false`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.code === 'Ok' && data.routes.length > 0) {
+        const nextLeg = data.routes[0].legs[0];
+        updateRouteInfo(gameId, nextLeg.duration, nextLeg.distance, status);
     }
 };
 
-// --- 6. RENDER A SINGLE GAME CARD ---
-const renderGameCard = (game) => {
+const updateRouteInfo = (gameId, duration, distance, status) => {
+    const etaElement = document.getElementById(`eta-${gameId}`);
+    if (etaElement) {
+        if (status === 'finished') {
+            etaElement.innerHTML = `<strong>Journey Complete!</strong>`;
+            return;
+        }
+        const minutes = Math.round(duration / 60);
+        const km = (distance / 1000).toFixed(1);
+        let destination = '';
+        if (status === 'initial') destination = "Grant's";
+        else if (status === 'picked_up_grant') destination = "Luc's";
+        else if (status === 'picked_up_luc') destination = "Area 66";
+        
+        etaElement.innerHTML = `ETA to ${destination}: <strong>${minutes} mins</strong> (${km} km)`;
+    }
+};
+
+// --- 9. RENDER/UPDATE CARD FUNCTIONS ---
+const createGameCard = (game) => {
+    const cardElement = document.createElement('div');
+    cardElement.className = 'game-card';
+    cardElement.id = `game-${game.id}`;
+    cardElement.innerHTML = generateCardContent(game);
+    return cardElement;
+};
+
+const updateGameCard = (cardElement, game) => {
+    // This function now only updates the availability section
+    updateAvailabilitySection(cardElement, game.availability);
+};
+
+const generateCardContent = (game) => {
     const availability = game.availability || { going: [], maybe: [], cant_make_it: [] };
     const username = currentUser.user_metadata.username;
-    
     const currentUserGoing = availability.going.find(p => p.name === username);
+    const isToday = new Date(game.date).toDateString() === new Date().toDateString();
 
     const calculateCountdown = (gameDateStr) => {
         const gameDate = new Date(gameDateStr).getTime();
@@ -86,21 +157,6 @@ const renderGameCard = (game) => {
         return `<span>${days}d</span> <span>${hours}h</span>`;
     };
 
-    const renderGoingAttendeeList = (attendees) => {
-        if (!attendees || attendees.length === 0) return '<li>None yet</li>';
-        return attendees.map(person => `
-            <li>
-                ${person.name}
-                ${person.booked ? '<i class="fas fa-ticket-alt booking-icon" title="Booked!"></i>' : ''}
-            </li>
-        `).join('');
-    };
-    
-    const renderReasonAttendeeList = (attendees) => {
-        if (!attendees || attendees.length === 0) return '<li>None yet</li>';
-        return attendees.map(person => `<li data-tooltip="${person.reason || 'No reason given'}">${person.name}</li>`).join('');
-    };
-
     const adminControls = game.user_id === currentUser.id ? `
         <div class="game-card-actions">
             <button class="icon-button edit-btn" data-id="${game.id}" title="Edit Game"><i class="fas fa-pencil-alt"></i></button>
@@ -108,32 +164,26 @@ const renderGameCard = (game) => {
         </div>
     ` : '';
     
-    const notesSection = game.description ? `
-        <div class="game-notes">
-            <h4 class="card-section-heading">Notes:</h4>
-            <p>${game.description}</p>
-        </div>
-    ` : '';
+    const notesSection = game.description ? `<div class="game-notes"><h4 class="card-section-heading">Notes:</h4><p>${game.description}</p></div>` : '';
     
-    const countdownSection = `
-        <div class="countdown-wrapper">
-            <h4 class="card-section-heading">Countdown:</h4>
-            <div class="game-countdown">${calculateCountdown(game.date)}</div>
-        </div>
-    `;
+    const countdownSection = `<div class="countdown-wrapper"><h4 class="card-section-heading">Countdown:</h4><div class="game-countdown">${calculateCountdown(game.date)}</div></div>`;
 
-    const bookingSection = (currentUserGoing && !currentUserGoing.booked) ? `
-        <div class="booking-confirmation">
-            <h4 class="card-section-heading">Have you booked yet?</h4>
-            <div class="booking-buttons">
-                <button class="booking-btn yes-btn" data-id="${game.id}">Yes</button>
-                <a href="https://area-66.co.uk/shop" target="_blank" class="booking-btn no-btn">No</a>
+    const bookingSection = (currentUserGoing && !currentUserGoing.booked) ? `<div class="booking-confirmation"><h4 class="card-section-heading">Have you booked yet?</h4><div class="booking-buttons"><button class="booking-btn yes-btn" data-id="${game.id}">Yes</button><a href="https://area-66.co.uk/shop" target="_blank" class="booking-btn no-btn">No</a></div></div>` : '';
+
+    const locationSharingSection = (isToday && currentUserGoing) ? `
+        <div class="location-sharing-section">
+            <h4 class="card-section-heading">Ride Tracker</h4>
+            <div id="eta-${game.id}" class="eta-display">Awaiting location...</div>
+            <div class="location-controls">
+                <button class="location-btn start-sharing" data-id="${game.id}"><i class="fas fa-satellite-dish"></i> Start Sharing</button>
+                <button class="location-btn stop-sharing" data-id="${game.id}" style="display:none;"><i class="fas fa-ban"></i> Stop Sharing</button>
+                <button class="location-btn pickup" data-id="${game.id}" data-status="picked_up_grant" style="display:none;">Picked up Grant</button>
+                <button class="location-btn pickup" data-id="${game.id}" data-status="picked_up_luc" style="display:none;">Picked up Luc</button>
             </div>
         </div>
     ` : '';
 
     return `
-    <div class="game-card" id="game-${game.id}">
         <div class="game-card-header">
             <div><h3>${game.location}</h3><p><strong>Date:</strong> ${new Date(game.date).toLocaleDateString()}</p></div>
         </div>
@@ -141,33 +191,111 @@ const renderGameCard = (game) => {
         ${countdownSection}
         ${notesSection}
         ${bookingSection}
+        ${locationSharingSection}
         <div class="availability-section">
-            <div class="availability-controls">
-                <button class="availability-btn going ${currentUserGoing ? 'selected' : ''}" data-id="${game.id}" data-status="going">Going</button>
-                <button class="availability-btn maybe ${availability.maybe.includes(username) ? 'selected' : ''}" data-id="${game.id}" data-status="maybe">Maybe</button>
-                <button class="availability-btn cant-make-it ${availability.cant_make_it.some(p => p.name === username) ? 'selected' : ''}" data-id="${game.id}" data-status="cant_make_it">Can't Go</button>
-            </div>
-            <div class="availability-display">
-                <div class="status-column going"><h4>✅ Going (${availability.going.length})</h4><ul class="attendee-list">${renderGoingAttendeeList(availability.going)}</ul></div>
-                <div class="status-column maybe"><h4>🤔 Maybe (${availability.maybe.length})</h4><ul class="attendee-list">${availability.maybe.map(name => `<li>${name}</li>`).join('') || '<li>None yet</li>'}</ul></div>
-                <div class="status-column cant-make-it"><h4>❌ Can't Go (${availability.cant_make_it.length})</h4><ul class="attendee-list">${renderReasonAttendeeList(availability.cant_make_it)}</ul></div>
-            </div>
+            ${generateAvailabilityContent(availability, game.id)}
         </div>
-    </div>
     `;
 };
 
-// --- 7. EVENT LISTENERS ---
+// --- NEW: Master function for just the availability section's HTML ---
+const generateAvailabilityContent = (availability, gameId) => {
+    const username = currentUser.user_metadata.username;
+    const currentUserGoing = availability.going.find(p => p.name === username);
+
+    const renderGoingAttendeeList = (attendees) => {
+        if (!attendees || attendees.length === 0) return '<li>None yet</li>';
+        return attendees.map(person => `<li>${person.name} ${person.booked ? '<i class="fas fa-ticket-alt booking-icon" title="Booked!"></i>' : ''}</li>`).join('');
+    };
+    
+    const renderReasonAttendeeList = (attendees) => {
+        if (!attendees || attendees.length === 0) return '<li>None yet</li>';
+        return attendees.map(person => `<li data-tooltip="${person.reason || 'No reason given'}">${person.name}</li>`).join('');
+    };
+
+    return `
+        <div class="availability-controls">
+            <button class="availability-btn going ${currentUserGoing ? 'selected' : ''}" data-id="${gameId}" data-status="going">Going</button>
+            <button class="availability-btn maybe ${availability.maybe.includes(username) ? 'selected' : ''}" data-id="${gameId}" data-status="maybe">Maybe</button>
+            <button class="availability-btn cant-make-it ${availability.cant_make_it.some(p => p.name === username) ? 'selected' : ''}" data-id="${gameId}" data-status="cant_make_it">Can't Go</button>
+        </div>
+        <div class="availability-display">
+            <div class="status-column going"><h4>✅ Going (${availability.going.length})</h4><ul class="attendee-list">${renderGoingAttendeeList(availability.going)}</ul></div>
+            <div class="status-column maybe"><h4>🤔 Maybe (${availability.maybe.length})</h4><ul class="attendee-list">${availability.maybe.map(name => `<li>${name}</li>`).join('') || '<li>None yet</li>'}</ul></div>
+            <div class="status-column cant-make-it"><h4>❌ Can't Go (${availability.cant_make_it.length})</h4><ul class="attendee-list">${renderReasonAttendeeList(availability.cant_make_it)}</ul></div>
+        </div>
+    `;
+};
+
+// --- 10. LOCATION SHARING LOGIC ---
+const startSharing = async (gameId) => {
+    if (locationInterval) clearInterval(locationInterval);
+    
+    const { data } = await supaClient.from('live_locations').select('status').eq('game_id', gameId).eq('user_id', currentUser.id).maybeSingle();
+    let currentStatus = data?.status || 'initial';
+
+    const share = () => {
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const { latitude, longitude } = position.coords;
+            const update = { game_id: gameId, user_id: currentUser.id, username: currentUser.user_metadata.username, lat: latitude, lng: longitude, status: currentStatus };
+            
+            await supaClient.from('live_locations').upsert(update, { onConflict: 'game_id, user_id' });
+            getRoute(gameId, { lat: latitude, lng: longitude }, currentStatus);
+
+            const channel = supaClient.channel(`game-${gameId}`);
+            channel.send({ type: 'broadcast', event: 'location_update', payload: { ...update } });
+        }, (error) => { console.error("Geolocation error:", error); alert("Could not get location."); stopSharing(); }, { enableHighAccuracy: true });
+    };
+    share();
+    locationInterval = setInterval(share, 10000);
+};
+
+const stopSharing = () => {
+    if (locationInterval) {
+        clearInterval(locationInterval);
+        locationInterval = null;
+        console.log("Location sharing stopped.");
+    }
+};
+
+// --- 11. EVENT LISTENERS ---
 gamesList.addEventListener('click', async (e) => {
     const target = e.target.closest('button');
     if (!target) return;
     const gameId = target.dataset.id;
     if (!gameId) return;
 
+    if (target.classList.contains('start-sharing')) {
+        startSharing(gameId);
+        target.style.display = 'none';
+        target.parentElement.querySelector('.stop-sharing').style.display = 'flex';
+        target.parentElement.querySelector('.pickup[data-status="picked_up_grant"]').style.display = 'flex';
+        return;
+    }
+    if (target.classList.contains('stop-sharing')) {
+        stopSharing();
+        target.style.display = 'none';
+        target.previousElementSibling.style.display = 'flex';
+        target.parentElement.querySelectorAll('.pickup').forEach(btn => btn.style.display = 'none');
+        return;
+    }
+    
+    if (target.classList.contains('pickup')) {
+        const newStatus = target.dataset.status;
+        await supaClient.from('live_locations').update({ status: newStatus }).eq('game_id', gameId).eq('user_id', currentUser.id);
+        
+        target.style.display = 'none';
+        if (newStatus === 'picked_up_grant') {
+            target.parentElement.querySelector('.pickup[data-status="picked_up_luc"]').style.display = 'flex';
+        }
+        startSharing(gameId); // Trigger a share to update the route
+        return;
+    }
+    
     if (target.classList.contains('delete-btn')) {
         if (confirm('Are you sure you want to delete this game?')) {
             await supaClient.from('games').delete().match({ id: gameId });
-            fetchGames();
+            document.getElementById(`game-${gameId}`)?.remove();
         }
         return;
     }
@@ -223,10 +351,9 @@ gamesList.addEventListener('click', async (e) => {
     }
 });
 
-// --- 8. ADD A NEW GAME ---
+// --- 12. ADD A NEW GAME ---
 addGameForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    console.log("Add game form submitted!"); // Debugging line
     const formData = new FormData(addGameForm);
     const newGame = {
         date: formData.get('date'), location: formData.get('location'), description: formData.get('description'),
@@ -238,7 +365,7 @@ addGameForm.addEventListener('submit', async (event) => {
     fetchGames();
 });
 
-// --- 9. EDIT MODAL LOGIC ---
+// --- 13. EDIT MODAL LOGIC ---
 editGameForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const gameId = document.getElementById('edit-game-id').value;
@@ -253,7 +380,7 @@ editGameForm.addEventListener('submit', async (e) => {
 });
 cancelEditBtn.addEventListener('click', () => { editModal.style.display = 'none'; });
 
-// --- 10. REASON MODAL LOGIC ---
+// --- 14. REASON MODAL LOGIC ---
 reasonForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const gameId = document.getElementById('reason-game-id').value;
@@ -273,4 +400,3 @@ cancelReasonBtn.addEventListener('click', () => {
     reasonForm.reset();
     reasonModal.style.display = 'none'; 
 });
-
