@@ -348,3 +348,78 @@ button[type="submit"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20p
 }
 
 .eta-mins { transition: color .25s ease; font-weight: 800; }
+
+/* ---------- Mobile tidy-up (<= 600px) ---------- */
+@media (max-width: 600px) {
+  .game-card { padding: 14px; border-radius: 14px; }
+
+  /* space out sections */
+  .game-card .countdown-wrapper,
+  .game-card .game-notes,
+  .game-card .location-sharing-section,
+  .game-card .availability-section { margin-top: 12px; }
+
+  /* ETA block a bit larger */
+  .eta-display { font-size: 1rem; line-height: 1.2; padding: 10px 12px; }
+
+  /* buttons: full-width, clean gaps */
+  .location-controls { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .location-btn { width: 100%; padding: 12px 14px; }
+
+  /* status buttons: equal columns w/ gap */
+  .availability-controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .availability-btn { width: 100%; padding: 12px 10px; font-size: .95rem; }
+
+  /* Going / Maybe / Can't Go columns stack with spacing */
+  .availability-display {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .status-column {
+    padding: 10px;
+    border-radius: 10px;
+    background: #151515;
+    border: 1px solid rgba(255,255,255,.08);
+  }
+
+  /* attendee list items look like chips */
+  .attendee-list { margin-top: 8px; display: grid; gap: 6px; padding: 0; }
+  .attendee-list li {
+    list-style: none;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #1f1f1f;
+    border: 1px solid rgba(255,255,255,.06);
+  }
+}
+
+/* ---------- Tablet+ layout restores 3 columns ---------- */
+@media (min-width: 601px) {
+  .availability-display {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+}
+
+/* ETA flash when very close */
+.eta-mins { font-weight: 800; display: inline-block; }
+.eta-flash { animation: etaFlash 0.8s ease-in-out infinite; }
+
+@keyframes etaFlash {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .eta-flash { animation: none !important; }
+}
+
