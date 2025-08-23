@@ -20,6 +20,9 @@ let locationInterval = null;
 const AREA_66_COORDS = [55.6080, -4.5055];
 const GRANT_COORDS = [55.58763831240875, -4.489699872812489];
 const LUC_COORDS = [55.5954546248295, -4.444951898993158];
+const legStatusByGame = {};
+const proximityFlags = {}; // { [gameId]: { [username]: { grant:{twoMi,arrived}, luc:{...}, site:{...} } } }
+
 
 // --- 4. AUTHENTICATION & INITIAL LOAD ---
 supaClient.auth.onAuthStateChange((event, session) => {
@@ -42,16 +45,60 @@ formHeader.addEventListener('click', (e) => {
 
 // --- 6. REALTIME LOCATION LISTENER ---
 const listenForLocations = (gameId) => {
-    const channel = supaClient.channel(`game-${gameId}`);
-    channel
-        .on('broadcast', { event: 'location_update' }, (payload) => {
-            const { username, lat, lng, status } = payload.payload;
-            if (username !== currentUser.user_metadata.username) {
-                // When another user's location is broadcast, just get the new route info
-                getRoute(gameId, { lat, lng }, status);
-            }
-        })
-        .subscribe();
+  const channel = supaClient.channel(`game-${gameId}`);
+  channel
+    .on('broadcast', { event: 'location_update' }, (payload) => {
+      const { username, lat, lng, status } = payload.payload;
+
+      // Only react to OTHER users
+      if (username !== currentUser.user_metadata.username) {
+        // keep your existing routing update
+        getRoute(gameId, { lat, lng }, status);
+
+        // --- PROXIMITY ALERTS (in-app) ---
+        const targetInfo = (() => {
+          if (status === 'initial') {
+            return { key: 'grant', label: "Grant's", lat: GRANT_COORDS[0], lng: GRANT_COORDS[1] };
+          }
+          if (status === 'picked_up_grant') {
+            return { key: 'luc', label: "Luc's", lat: LUC_COORDS[0], lng: LUC_COORDS[1] };
+          }
+          if (status === 'picked_up_luc') {
+            return { key: 'site', label: 'Area 66', lat: AREA_66_COORDS[0], lng: AREA_66_COORDS[1] };
+          }
+          return null;
+        })();
+
+        if (targetInfo) {
+          const dist = haversineMiles({ lat, lng }, { lat: targetInfo.lat, lng: targetInfo.lng });
+
+          // init per-game/per-user flags
+          proximityFlags[gameId] ??= {};
+          proximityFlags[gameId][username] ??= {
+            grant: { twoMi: false, arrived: false },
+            luc:   { twoMi: false, arrived: false },
+            site:  { twoMi: false, arrived: false }
+          };
+          const flags = proximityFlags[gameId][username][targetInfo.key];
+
+          // ~2 miles heads-up
+          if (!flags.twoMi && dist <= 2.0) {
+            flags.twoMi = true;
+            showToast(`${username} is ~${dist.toFixed(1)} mi from ${targetInfo.label}`);
+            if (navigator.vibrate) navigator.vibrate(150);
+          }
+
+          // "I'm outside" (~0.1 mi ≈ 160m)
+          if (!flags.arrived && dist <= 0.1) {
+            flags.arrived = true;
+            showToast(`${username} is outside ${targetInfo.label}`);
+            if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+          }
+        }
+        // --- /PROXIMITY ALERTS ---
+      }
+    })
+    .subscribe();
 };
 
 // --- 7. FETCH & DISPLAY GAMES (RUNS ONCE) ---
@@ -110,21 +157,28 @@ const getRoute = async (gameId, startCoords, status) => {
 };
 
 const updateRouteInfo = (gameId, duration, distance, status) => {
-    const etaElement = document.getElementById(`eta-${gameId}`);
-    if (etaElement) {
-        if (status === 'finished') {
-            etaElement.innerHTML = `<strong>Journey Complete!</strong>`;
-            return;
-        }
-        const minutes = Math.round(duration / 60);
-        const km = (distance / 1000).toFixed(1);
-        let destination = '';
-        if (status === 'initial') destination = "Grant's";
-        else if (status === 'picked_up_grant') destination = "Luc's";
-        else if (status === 'picked_up_luc') destination = "Area 66";
-        
-        etaElement.innerHTML = `ETA to ${destination}: <strong>${minutes} mins</strong> (${km} km)`;
-    }
+  const etaElement = document.getElementById(`eta-${gameId}`);
+  if (!etaElement) return;
+
+  if (status === 'finished') {
+    etaElement.innerHTML = `<strong>Journey Complete!</strong>`;
+    return;
+  }
+
+  const minutes = Math.round(duration / 60);
+  const miles = (distance / 1609.344).toFixed(1); // meters -> miles
+  const color = etaColor(minutes, 40);            // 40 min scale; change if you like
+
+  let destination = '';
+  if (status === 'initial') destination = "Grant's";
+  else if (status === 'picked_up_grant') destination = "Luc's";
+  else if (status === 'picked_up_luc') destination = "Area 66";
+
+  etaElement.innerHTML = `
+    ETA to ${destination}: 
+    <strong><span class="eta-mins" style="color:${color}">${minutes} mins</span></strong>
+    (${miles} mi)
+  `;
 };
 
 // --- 9. RENDER/UPDATE CARD FUNCTIONS ---
@@ -231,47 +285,41 @@ const generateAvailabilityContent = (availability, gameId) => {
 const startSharing = async (gameId) => {
   if (locationInterval) clearInterval(locationInterval);
 
-  // Always start fresh: first stop is Grant
-  let currentStatus = 'initial';
-  await supaClient.from('live_locations').upsert(
-    {
-      game_id: gameId,
-      user_id: currentUser.id,
-      username: currentUser.user_metadata.username,
-      status: currentStatus
-    },
-    { onConflict: 'game_id, user_id' }
-  );
+  // Always start at Grant when sharing begins
+  legStatusByGame[gameId] = 'initial';
 
-  // Sync buttons with this status (safety)
-  const controls = document.querySelector(`#game-${gameId} .location-controls`);
-  if (controls) {
-    const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
-    const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
+  // Button sync (defensive)
+  const ctrls = document.querySelector(`#game-${gameId} .location-controls`);
+  if (ctrls) {
+    const btnGrant = ctrls.querySelector('.pickup[data-status="picked_up_grant"]');
+    const btnLuc   = ctrls.querySelector('.pickup[data-status="picked_up_luc"]');
     if (btnGrant) btnGrant.style.display = 'flex';
     if (btnLuc)   btnLuc.style.display   = 'none';
   }
 
-  // Reuse a single channel instance for broadcasts
+  // Reuse a channel per game
   const channel = supaClient.channel(`game-${gameId}`);
 
   const share = () => {
     navigator.geolocation.getCurrentPosition(async ({ coords }) => {
-      const { latitude, longitude } = coords;
+      const statusNow = legStatusByGame[gameId] || 'initial';
 
       const update = {
         game_id: gameId,
         user_id: currentUser.id,
         username: currentUser.user_metadata.username,
-        lat: latitude,
-        lng: longitude,
-        status: currentStatus
+        lat: coords.latitude,
+        lng: coords.longitude,
+        status: statusNow
       };
 
-      await supaClient.from('live_locations').upsert(update, { onConflict: 'game_id, user_id' });
+      const { error } = await supaClient
+        .from('live_locations')
+        .upsert(update, { onConflict: 'game_id,user_id' });
+      if (error) console.error('Upsert error:', error);
 
-      // Route for the CURRENT leg (Grant first)
-      getRoute(gameId, { lat: latitude, lng: longitude }, currentStatus);
+      // Route for the CURRENT leg
+      getRoute(gameId, { lat: coords.latitude, lng: coords.longitude }, statusNow);
 
       // Broadcast so others update immediately
       channel.send({ type: 'broadcast', event: 'location_update', payload: update });
@@ -285,6 +333,7 @@ const startSharing = async (gameId) => {
   share();
   locationInterval = setInterval(share, 10000);
 };
+
 
 
 const stopSharing = () => {
@@ -324,59 +373,60 @@ gamesList.addEventListener('click', async (e) => {
   }
 
   // Pickup buttons: update status, toggle visibility, recompute route (do NOT call startSharing)
-  if (target.classList.contains('pickup')) {
-    const newStatus = target.dataset.status; // 'picked_up_grant' or 'picked_up_luc'
-    target.disabled = true;
+if (target.classList.contains('pickup')) {
+  const newStatus = target.dataset.status; // 'picked_up_grant' | 'picked_up_luc'
+  legStatusByGame[gameId] = newStatus;     // keep the interval in sync
+  target.disabled = true;
 
-    try {
-      // Persist the new leg
-      await supaClient.from('live_locations').upsert(
-        { game_id: gameId, user_id: currentUser.id, status: newStatus },
-        { onConflict: 'game_id, user_id' }
-      );
+	  try {
+		// Toggle which pickup buttons are visible immediately
+		const controls = target.closest('.location-controls');
+		const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
+		const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
 
-      // Toggle which pickup buttons are visible
-      const controls = target.closest('.location-controls');
-      const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
-      const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
+		if (newStatus === 'picked_up_grant') {
+		  if (btnGrant) btnGrant.style.display = 'none';
+		  if (btnLuc)   btnLuc.style.display   = 'flex'; // next: Luc
+		} else if (newStatus === 'picked_up_luc') {
+		  if (btnGrant) btnGrant.style.display = 'none';
+		  if (btnLuc)   btnLuc.style.display   = 'none'; // final leg to site
+		}
 
-      if (newStatus === 'picked_up_grant') {
-        if (btnGrant) btnGrant.style.display = 'none';
-        if (btnLuc)   btnLuc.style.display   = 'flex';   // next: Luc
-      } else if (newStatus === 'picked_up_luc') {
-        if (btnGrant) btnGrant.style.display = 'none';
-        if (btnLuc)   btnLuc.style.display   = 'none';   // final leg to site
-      }
+		// Get fresh coords, then upsert WITH lat/lng + status
+		navigator.geolocation.getCurrentPosition(
+		  async ({ coords }) => {
+			const update = {
+			  game_id: gameId,
+			  user_id: currentUser.id,
+			  username: currentUser.user_metadata.username,
+			  lat: coords.latitude,
+			  lng: coords.longitude,
+			  status: newStatus
+			};
 
-      // Recompute the route once with the updated status (no reset)
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => {
-          const lat = coords.latitude, lng = coords.longitude;
-          getRoute(gameId, { lat, lng }, newStatus);
+			const { error } = await supaClient
+			  .from('live_locations')
+			  .upsert(update, { onConflict: 'game_id,user_id' });
+			if (error) console.error('Upsert error after pickup:', error);
 
-          // Broadcast so others update immediately
-          const channel = supaClient.channel(`game-${gameId}`);
-          channel.send({
-            type: 'broadcast',
-            event: 'location_update',
-            payload: {
-              game_id: gameId,
-              user_id: currentUser.id,
-              username: currentUser.user_metadata.username,
-              lat, lng, status: newStatus
-            }
-          });
-        },
-        (err) => console.error('Geolocation error after pickup:', err),
-        { enableHighAccuracy: true, maximumAge: 0 }
-      );
-    } catch (err) {
-      console.error('Failed to update pickup status:', err);
-    } finally {
-      target.disabled = false;
-    }
-    return;
-  }
+			// Recompute route
+			getRoute(gameId, { lat: coords.latitude, lng: coords.longitude }, newStatus);
+
+			// Broadcast
+			const channel = supaClient.channel(`game-${gameId}`);
+			channel.send({ type: 'broadcast', event: 'location_update', payload: update });
+		  },
+		  (err) => console.error('Geolocation error after pickup:', err),
+		  { enableHighAccuracy: true, maximumAge: 0 }
+		);
+	} catch (err) {
+		console.error('Failed to handle pickup:', err);
+	} finally {
+		target.disabled = false;
+	}
+  return;
+}
+
 
   if (target.classList.contains('delete-btn')) {
     if (confirm('Are you sure you want to delete this game?')) {
@@ -487,3 +537,46 @@ cancelReasonBtn.addEventListener('click', () => {
     reasonForm.reset();
     reasonModal.style.display = 'none'; 
 });
+
+// --- Surgical update for the availability section only ---
+function updateAvailabilitySection(cardElement, availability) {
+  const section = cardElement.querySelector('.availability-section');
+  if (!section) return;
+
+  const gameId = cardElement.id.replace('game-', '');
+  const safe = availability || { going: [], maybe: [], cant_make_it: [] };
+  const html = generateAvailabilityContent(safe, gameId);
+
+  if (section.innerHTML !== html) {
+    section.innerHTML = html;
+  }
+}
+
+// 0 min -> green, 40+ -> red (tweak maxMins if you want)
+function etaColor(minutes, maxMins = 40) {
+  const m = Math.max(0, Math.min(minutes, maxMins));
+  const hue = (1 - m / maxMins) * 120; // 120=green, 0=red
+  return `hsl(${hue}, 80%, 45%)`;
+}
+
+// Haversine distance in miles
+function haversineMiles(a, b) {
+  const toRad = (x) => x * Math.PI / 180, R = 3958.7613;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Minimal toast
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', left:'50%', bottom:'24px', transform:'translateX(-50%)',
+    background:'#111', color:'#fff', padding:'10px 14px', borderRadius:'10px',
+    boxShadow:'0 6px 18px rgba(0,0,0,.25)', zIndex:9999, fontWeight:'700'
+  });
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2800);
+}
