@@ -158,31 +158,75 @@ const updateAllAvailabilities = async () => {
     });
 };
 
+// Abort fetches that hang (public OSRM can be slow)
+async function fetchWithTimeout(url, ms = 8000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+// Which stop are we routing to for a given leg?
+function nextTargetForStatus(status) {
+  if (status === 'initial')        return { label: "Grant's", lat: GRANT_COORDS[0], lng: GRANT_COORDS[1] };
+  if (status === 'picked_up_grant') return { label: "Luc's",   lat: LUC_COORDS[0],   lng: LUC_COORDS[1]   };
+  if (status === 'picked_up_luc')   return { label: 'Area 66', lat: AREA_66_COORDS[0], lng: AREA_66_COORDS[1] };
+  return null;
+}
+
+// Put this helper near updateRouteInfo
+function showEtaUnavailable(gameId, status) {
+  const etaEl = document.getElementById(`eta-${gameId}`);
+  if (!etaEl) return;
+
+  let dest = '';
+  if (status === 'initial') dest = "Grant's";
+  else if (status === 'picked_up_grant') dest = "Luc's";
+  else if (status === 'picked_up_luc') dest = "Area 66";
+
+  etaEl.innerHTML = `ETA to ${dest}: <strong class="eta-error">Unavailable (cannot fetch)</strong>`;
+}
+
+
+
 // --- 8. ROUTING FUNCTIONS (USING OSRM) ---
 const getRoute = async (gameId, startCoords, status) => {
-    let waypoints = `${startCoords.lng},${startCoords.lat}`;
-    if (status === 'initial') {
-        waypoints += `;${GRANT_COORDS[1]},${GRANT_COORDS[0]};${LUC_COORDS[1]},${LUC_COORDS[0]};${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
-    } else if (status === 'picked_up_grant') {
-        waypoints += `;${LUC_COORDS[1]},${LUC_COORDS[0]};${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
-    } else if (status === 'picked_up_luc') {
-        waypoints += `;${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+  let waypoints = `${startCoords.lng},${startCoords.lat}`;
+  if (status === 'initial') {
+    waypoints += `;${GRANT_COORDS[1]},${GRANT_COORDS[0]};${LUC_COORDS[1]},${LUC_COORDS[0]};${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+  } else if (status === 'picked_up_grant') {
+    waypoints += `;${LUC_COORDS[1]},${LUC_COORDS[0]};${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+  } else if (status === 'picked_up_luc') {
+    waypoints += `;${AREA_66_COORDS[1]},${AREA_66_COORDS[0]}`;
+  } else {
+    updateRouteInfo(gameId, 0, 0, 'finished');
+    return;
+  }
+
+  const url = `https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=false`;
+
+  try {
+    const resp = await fetch(url /*, { signal: AbortSignal.timeout(8000) } */);
+    if (!resp.ok) throw new Error(`OSRM ${resp.status}`);
+    const data = await resp.json();
+
+    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      const nextLeg = data.routes[0].legs[0];
+      updateRouteInfo(gameId, nextLeg.duration, nextLeg.distance, status);
     } else {
-        updateRouteInfo(gameId, 0, 0, 'finished');
-        return;
+      showEtaUnavailable(gameId, status);
     }
-
-    const url = `https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=false`;
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (data.code === 'Ok' && data.routes.length > 0) {
-        const nextLeg = data.routes[0].legs[0];
-        updateRouteInfo(gameId, nextLeg.duration, nextLeg.distance, status);
-    }
+  } catch (err) {
+    console.warn('Directions fetch failed:', err);
+    showEtaUnavailable(gameId, status);
+  }
 };
 
-const updateRouteInfo = (gameId, duration, distance, status) => {
+const updateRouteInfo = (gameId, duration, distance, status, estimated = false) => {
   const etaElement = document.getElementById(`eta-${gameId}`);
   if (!etaElement) return;
 
@@ -192,8 +236,8 @@ const updateRouteInfo = (gameId, duration, distance, status) => {
   }
 
   const minutes = Math.round(duration / 60);
-  const miles   = (distance / 1609.344).toFixed(1); // meters -> miles
-  const color   = etaColor ? etaColor(minutes, 40) : '#f6a319'; // if you added etaColor earlier
+  const miles   = (distance / 1609.344).toFixed(1);
+  const color   = etaColor ? etaColor(minutes, 40) : '#f6a319';
 
   let destination = '';
   if (status === 'initial') destination = "Grant's";
@@ -205,20 +249,17 @@ const updateRouteInfo = (gameId, duration, distance, status) => {
     <strong>
       <span class="eta-mins" style="color:${color}">${minutes} mins</span>
     </strong>
-    (<span class="eta-dist">${miles} mi</span>)
+    (<span class="eta-dist">${miles} mi</span>)${estimated ? ' <small class="eta-note">(est.)</small>' : ''}
   `;
 
-  // Pulse → Flash change
-	const minsEl  = etaElement.querySelector('.eta-mins');
-
-	// Flash the time when <= 3 mins away (or use a dev flag)
-	const shouldFlash = (window._flashTest === true) || minutes <= 3;
-
-	if (minsEl) {
-	  if (shouldFlash) minsEl.classList.add('eta-flash');
-	  else minsEl.classList.remove('eta-flash');
-	}
+  const minsEl = etaElement.querySelector('.eta-mins');
+  const shouldFlash = (window._flashTest === true) || minutes <= 3;
+  if (minsEl) {
+    if (shouldFlash) minsEl.classList.add('eta-flash');
+    else minsEl.classList.remove('eta-flash');
+  }
 };
+
 
 // --- 9. RENDER/UPDATE CARD FUNCTIONS ---
 const createGameCard = (game) => {
@@ -351,11 +392,37 @@ const generateCardContent = (game) => {
   `;
 };
 
+// --- util: make sure the referenced game exists (avoids FK 23503) ---
+async function ensureGameExists(gameId) {
+  const { data, error } = await supaClient
+    .from('games')
+    .select('id')
+    .eq('id', gameId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('ensureGameExists error:', error);
+    return false;
+  }
+  if (!data) {
+    console.warn('Game not found for id:', gameId);
+    return false;
+  }
+  return true;
+}
+
+
 // --- 10. LOCATION SHARING LOGIC ---
 const startSharing = async (gameId) => {
-  if (!(await ensureGameExists(gameId))) return;
-
   if (locationInterval) clearInterval(locationInterval);
+
+  // bail out if the game is gone / id mismatch
+  if (!(await ensureGameExists(gameId))) {
+    showToast('This game no longer exists, cannot start sharing.');
+    return;
+  }
+
+  // Always start at Grant when sharing begins
   legStatusByGame[gameId] = 'initial';
 
   const ctrls = document.querySelector(`#game-${gameId} .location-controls`);
