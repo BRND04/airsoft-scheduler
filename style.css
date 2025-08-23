@@ -56,6 +56,9 @@ form {
     overflow: hidden;
 }
 
+#add-game-form .form-header { cursor: pointer; } /* nice UX */
+
+
 .form-header {
     display: flex;
     justify-content: space-between;
@@ -85,10 +88,6 @@ form.collapsed .form-content {
     max-height: 0;
     opacity: 0;
     margin-top: 0;
-}
-
-form.collapsed #collapse-form-btn i {
-    transform: rotate(180deg);
 }
 
 .form-group { margin-bottom: 1.5rem; }
