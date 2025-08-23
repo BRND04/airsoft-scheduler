@@ -199,11 +199,14 @@ const updateRouteInfo = (gameId, duration, distance, status) => {
 
 // --- 9. RENDER/UPDATE CARD FUNCTIONS ---
 const createGameCard = (game) => {
-    const cardElement = document.createElement('div');
-    cardElement.className = 'game-card';
-    cardElement.id = `game-${game.id}`;
-    cardElement.innerHTML = generateCardContent(game);
-    return cardElement;
+  const cardElement = document.createElement('div');
+  cardElement.className = 'game-card';
+  cardElement.id = `game-${game.id}`;
+  // driver = creator only if they checked the box
+  cardElement.dataset.driverId = game.user_id;                 // who CAN be driver
+  cardElement.dataset.isDriver = String(!!game.is_driver);     // did they choose to be driver
+  cardElement.innerHTML = generateCardContent(game);
+  return cardElement;
 };
 
 const updateGameCard = (cardElement, game) => {
@@ -211,100 +214,127 @@ const updateGameCard = (cardElement, game) => {
     updateAvailabilitySection(cardElement, game.availability);
 };
 
+// --- Availability HTML (hoisted) ---
+function generateAvailabilityContent(availability, gameId) {
+  const username = currentUser.user_metadata.username;
+  const safe = availability || { going: [], maybe: [], cant_make_it: [] };
+  const currentUserGoing = safe.going.find(p => p.name === username);
+
+  const renderGoingAttendeeList = (attendees) => {
+    if (!attendees || attendees.length === 0) return '<li>None yet</li>';
+    return attendees
+      .map(person => `<li>${person.name} ${person.booked ? '<i class="fas fa-ticket-alt booking-icon" title="Booked!"></i>' : ''}</li>`)
+      .join('');
+  };
+
+  const renderReasonAttendeeList = (attendees) => {
+    if (!attendees || attendees.length === 0) return '<li>None yet</li>';
+    return attendees
+      .map(person => `<li data-tooltip="${person.reason || 'No reason given'}">${person.name}</li>`)
+      .join('');
+  };
+
+  return `
+    <div class="availability-controls">
+      <button class="availability-btn going ${currentUserGoing ? 'selected' : ''}"
+              data-id="${gameId}" data-status="going">Going</button>
+      <button class="availability-btn maybe ${safe.maybe.includes(username) ? 'selected' : ''}"
+              data-id="${gameId}" data-status="maybe">Maybe</button>
+      <button class="availability-btn cant-make-it ${safe.cant_make_it.some(p => p.name === username) ? 'selected' : ''}"
+              data-id="${gameId}" data-status="cant_make_it">Can't Go</button>
+    </div>
+    <div class="availability-display">
+      <div class="status-column going">
+        <h4>✅ Going (${safe.going.length})</h4>
+        <ul class="attendee-list">${renderGoingAttendeeList(safe.going)}</ul>
+      </div>
+      <div class="status-column maybe">
+        <h4>🤔 Maybe (${safe.maybe.length})</h4>
+        <ul class="attendee-list">${safe.maybe.map(name => `<li>${name}</li>`).join('') || '<li>None yet</li>'}</ul>
+      </div>
+      <div class="status-column cant-make-it">
+        <h4>❌ Can't Go (${safe.cant_make_it.length})</h4>
+        <ul class="attendee-list">${renderReasonAttendeeList(safe.cant_make_it)}</ul>
+      </div>
+    </div>
+  `;
+}
+
 const generateCardContent = (game) => {
-    const availability = game.availability || { going: [], maybe: [], cant_make_it: [] };
-    const username = currentUser.user_metadata.username;
-    const currentUserGoing = availability.going.find(p => p.name === username);
-    const isToday = new Date(game.date).toDateString() === new Date().toDateString();
+  const availability = game.availability || { going: [], maybe: [], cant_make_it: [] };
+  const username = currentUser.user_metadata.username;
+  const currentUserGoing = availability.going.find(p => p.name === username);
+  const isToday = new Date(game.date).toDateString() === new Date().toDateString();
 
-    const calculateCountdown = (gameDateStr) => {
-        const gameDate = new Date(gameDateStr).getTime();
-        const now = new Date().getTime();
-        const distance = gameDate - now;
-        if (distance < 0) return "Game day has passed!";
-        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        return `<span>${days}d</span> <span>${hours}h</span>`;
-    };
+  const calculateCountdown = (gameDateStr) => {
+    const gameDate = new Date(gameDateStr).getTime();
+    const now = new Date().getTime();
+    const distance = gameDate - now;
+    if (distance < 0) return "It's Game Day!";
+    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    return `<span>${days}d</span> <span>${hours}h</span>`;
+  };
 
-    const adminControls = game.user_id === currentUser.id ? `
-        <div class="game-card-actions">
-            <button class="icon-button edit-btn" data-id="${game.id}" title="Edit Game"><i class="fas fa-pencil-alt"></i></button>
-            <button class="icon-button delete-btn" data-id="${game.id}" title="Delete Game"><i class="fas fa-trash-alt"></i></button>
+  const adminControls = game.user_id === currentUser.id ? `
+    <div class="game-card-actions">
+      <button class="icon-button edit-btn" data-id="${game.id}" title="Edit Game"><i class="fas fa-pencil-alt"></i></button>
+      <button class="icon-button delete-btn" data-id="${game.id}" title="Delete Game"><i class="fas fa-trash-alt"></i></button>
+    </div>
+  ` : '';
+
+  const notesSection = game.description ? `<div class="game-notes"><h4 class="card-section-heading">Notes:</h4><p>${game.description}</p></div>` : '';
+  const countdownSection = `<div class="countdown-wrapper"><h4 class="card-section-heading">Countdown:</h4><div class="game-countdown">${calculateCountdown(game.date)}</div></div>`;
+  const bookingSection = (currentUserGoing && !currentUserGoing.booked) ? `
+    <div class="booking-confirmation"><h4 class="card-section-heading">Have you booked yet?</h4>
+      <div class="booking-buttons">
+        <button class="booking-btn yes-btn" data-id="${game.id}">Yes</button>
+        <a href="https://area-66.co.uk/shop" target="_blank" class="booking-btn no-btn">No</a>
+      </div>
+    </div>` : '';
+
+  // Driver is: (1) creator of the game AND (2) checked "is_driver"
+  const iAmDriver = (game.user_id === currentUser.id) && !!game.is_driver;
+
+  const locationSharingSection = (isToday && currentUserGoing) ? `
+    <div class="location-sharing-section">
+      <h4 class="card-section-heading">Ride Tracker</h4>
+      <div id="eta-${game.id}" class="eta-display">Awaiting location...</div>
+      ${iAmDriver ? `
+        <div class="location-controls">
+          <button class="location-btn start-sharing" data-id="${game.id}"><i class="fas fa-satellite-dish"></i> Start Sharing</button>
+          <button class="location-btn stop-sharing" data-id="${game.id}" style="display:none;"><i class="fas fa-ban"></i> Stop Sharing</button>
+          <button class="location-btn pickup" data-id="${game.id}" data-status="picked_up_grant" style="display:none;">Picked up Grant</button>
+          <button class="location-btn pickup" data-id="${game.id}" data-status="picked_up_luc" style="display:none;">Picked up Luc</button>
         </div>
-    ` : '';
-    
-    const notesSection = game.description ? `<div class="game-notes"><h4 class="card-section-heading">Notes:</h4><p>${game.description}</p></div>` : '';
-    
-    const countdownSection = `<div class="countdown-wrapper"><h4 class="card-section-heading">Countdown:</h4><div class="game-countdown">${calculateCountdown(game.date)}</div></div>`;
+      ` : `
+        <div class="tracker-note">Only the driver can share location. You’ll see the ETA here once they start.</div>
+      `}
+    </div>
+  ` : '';
 
-    const bookingSection = (currentUserGoing && !currentUserGoing.booked) ? `<div class="booking-confirmation"><h4 class="card-section-heading">Have you booked yet?</h4><div class="booking-buttons"><button class="booking-btn yes-btn" data-id="${game.id}">Yes</button><a href="https://area-66.co.uk/shop" target="_blank" class="booking-btn no-btn">No</a></div></div>` : '';
-
-    const locationSharingSection = (isToday && currentUserGoing) ? `
-        <div class="location-sharing-section">
-            <h4 class="card-section-heading">Ride Tracker</h4>
-            <div id="eta-${game.id}" class="eta-display">Awaiting location...</div>
-            <div class="location-controls">
-                <button class="location-btn start-sharing" data-id="${game.id}"><i class="fas fa-satellite-dish"></i> Start Sharing</button>
-                <button class="location-btn stop-sharing" data-id="${game.id}" style="display:none;"><i class="fas fa-ban"></i> Stop Sharing</button>
-                <button class="location-btn pickup" data-id="${game.id}" data-status="picked_up_grant" style="display:none;">Picked up Grant</button>
-                <button class="location-btn pickup" data-id="${game.id}" data-status="picked_up_luc" style="display:none;">Picked up Luc</button>
-            </div>
-        </div>
-    ` : '';
-
-    return `
-        <div class="game-card-header">
-            <div><h3>${game.location}</h3><p><strong>Date:</strong> ${new Date(game.date).toLocaleDateString()}</p></div>
-        </div>
-        ${adminControls}
-        ${countdownSection}
-        ${notesSection}
-        ${bookingSection}
-        ${locationSharingSection}
-        <div class="availability-section">
-            ${generateAvailabilityContent(availability, game.id)}
-        </div>
-    `;
-};
-
-// --- NEW: Master function for just the availability section's HTML ---
-const generateAvailabilityContent = (availability, gameId) => {
-    const username = currentUser.user_metadata.username;
-    const currentUserGoing = availability.going.find(p => p.name === username);
-
-    const renderGoingAttendeeList = (attendees) => {
-        if (!attendees || attendees.length === 0) return '<li>None yet</li>';
-        return attendees.map(person => `<li>${person.name} ${person.booked ? '<i class="fas fa-ticket-alt booking-icon" title="Booked!"></i>' : ''}</li>`).join('');
-    };
-    
-    const renderReasonAttendeeList = (attendees) => {
-        if (!attendees || attendees.length === 0) return '<li>None yet</li>';
-        return attendees.map(person => `<li data-tooltip="${person.reason || 'No reason given'}">${person.name}</li>`).join('');
-    };
-
-    return `
-        <div class="availability-controls">
-            <button class="availability-btn going ${currentUserGoing ? 'selected' : ''}" data-id="${gameId}" data-status="going">Going</button>
-            <button class="availability-btn maybe ${availability.maybe.includes(username) ? 'selected' : ''}" data-id="${gameId}" data-status="maybe">Maybe</button>
-            <button class="availability-btn cant-make-it ${availability.cant_make_it.some(p => p.name === username) ? 'selected' : ''}" data-id="${gameId}" data-status="cant_make_it">Can't Go</button>
-        </div>
-        <div class="availability-display">
-            <div class="status-column going"><h4>✅ Going (${availability.going.length})</h4><ul class="attendee-list">${renderGoingAttendeeList(availability.going)}</ul></div>
-            <div class="status-column maybe"><h4>🤔 Maybe (${availability.maybe.length})</h4><ul class="attendee-list">${availability.maybe.map(name => `<li>${name}</li>`).join('') || '<li>None yet</li>'}</ul></div>
-            <div class="status-column cant-make-it"><h4>❌ Can't Go (${availability.cant_make_it.length})</h4><ul class="attendee-list">${renderReasonAttendeeList(availability.cant_make_it)}</ul></div>
-        </div>
-    `;
+  return `
+    <div class="game-card-header">
+      <div><h3>${game.location}</h3><p><strong>Date:</strong> ${new Date(game.date).toLocaleDateString()}</p></div>
+    </div>
+    ${adminControls}
+    ${countdownSection}
+    ${notesSection}
+    ${bookingSection}
+    ${locationSharingSection}
+    <div class="availability-section">
+      ${generateAvailabilityContent(availability, game.id)}
+    </div>
+  `;
 };
 
 // --- 10. LOCATION SHARING LOGIC ---
 const startSharing = async (gameId) => {
-  if (locationInterval) clearInterval(locationInterval);
+  if (!(await ensureGameExists(gameId))) return;
 
-  // Always start at Grant when sharing begins
+  if (locationInterval) clearInterval(locationInterval);
   legStatusByGame[gameId] = 'initial';
 
-  // Button sync (defensive)
   const ctrls = document.querySelector(`#game-${gameId} .location-controls`);
   if (ctrls) {
     const btnGrant = ctrls.querySelector('.pickup[data-status="picked_up_grant"]');
@@ -313,13 +343,13 @@ const startSharing = async (gameId) => {
     if (btnLuc)   btnLuc.style.display   = 'none';
   }
 
-  // Reuse a channel per game
   const channel = supaClient.channel(`game-${gameId}`);
 
   const share = () => {
     navigator.geolocation.getCurrentPosition(async ({ coords }) => {
-      const statusNow = legStatusByGame[gameId] || 'initial';
+      if (!(await ensureGameExists(gameId))) return; // guard each tick
 
+      const statusNow = legStatusByGame[gameId] || 'initial';
       const update = {
         game_id: gameId,
         user_id: currentUser.id,
@@ -331,13 +361,10 @@ const startSharing = async (gameId) => {
 
       const { error } = await supaClient
         .from('live_locations')
-        .upsert(update, { onConflict: 'game_id,user_id' });
+        .upsert(update, { onConflict: 'game_id,user_id' }); // no spaces
       if (error) console.error('Upsert error:', error);
 
-      // Route for the CURRENT leg
       getRoute(gameId, { lat: coords.latitude, lng: coords.longitude }, statusNow);
-
-      // Broadcast so others update immediately
       channel.send({ type: 'broadcast', event: 'location_update', payload: update });
     }, (err) => {
       console.error('Geolocation error:', err);
@@ -349,6 +376,7 @@ const startSharing = async (gameId) => {
   share();
   locationInterval = setInterval(share, 10000);
 };
+
 
 
 
@@ -390,56 +418,53 @@ gamesList.addEventListener('click', async (e) => {
 
   // Pickup buttons: update status, toggle visibility, recompute route (do NOT call startSharing)
 if (target.classList.contains('pickup')) {
-  const newStatus = target.dataset.status; // 'picked_up_grant' | 'picked_up_luc'
-  legStatusByGame[gameId] = newStatus;     // keep the interval in sync
+  const newStatus = target.dataset.status;
+  if (!(await ensureGameExists(gameId))) return;
+
+  legStatusByGame[gameId] = newStatus;
   target.disabled = true;
 
-	  try {
-		// Toggle which pickup buttons are visible immediately
-		const controls = target.closest('.location-controls');
-		const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
-		const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
+  try {
+    const controls = target.closest('.location-controls');
+    const btnGrant = controls.querySelector('.pickup[data-status="picked_up_grant"]');
+    const btnLuc   = controls.querySelector('.pickup[data-status="picked_up_luc"]');
 
-		if (newStatus === 'picked_up_grant') {
-		  if (btnGrant) btnGrant.style.display = 'none';
-		  if (btnLuc)   btnLuc.style.display   = 'flex'; // next: Luc
-		} else if (newStatus === 'picked_up_luc') {
-		  if (btnGrant) btnGrant.style.display = 'none';
-		  if (btnLuc)   btnLuc.style.display   = 'none'; // final leg to site
-		}
+    if (newStatus === 'picked_up_grant') {
+      if (btnGrant) btnGrant.style.display = 'none';
+      if (btnLuc)   btnLuc.style.display   = 'flex';
+    } else if (newStatus === 'picked_up_luc') {
+      if (btnGrant) btnGrant.style.display = 'none';
+      if (btnLuc)   btnLuc.style.display   = 'none';
+    }
 
-		// Get fresh coords, then upsert WITH lat/lng + status
-		navigator.geolocation.getCurrentPosition(
-		  async ({ coords }) => {
-			const update = {
-			  game_id: gameId,
-			  user_id: currentUser.id,
-			  username: currentUser.user_metadata.username,
-			  lat: coords.latitude,
-			  lng: coords.longitude,
-			  status: newStatus
-			};
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        if (!(await ensureGameExists(gameId))) return;
 
-			const { error } = await supaClient
-			  .from('live_locations')
-			  .upsert(update, { onConflict: 'game_id,user_id' });
-			if (error) console.error('Upsert error after pickup:', error);
+        const update = {
+          game_id: gameId,
+          user_id: currentUser.id,
+          username: currentUser.user_metadata.username,
+          lat: coords.latitude,
+          lng: coords.longitude,
+          status: newStatus
+        };
 
-			// Recompute route
-			getRoute(gameId, { lat: coords.latitude, lng: coords.longitude }, newStatus);
+        const { error } = await supaClient
+          .from('live_locations')
+          .upsert(update, { onConflict: 'game_id,user_id' });
+        if (error) console.error('Upsert error after pickup:', error);
 
-			// Broadcast
-			const channel = supaClient.channel(`game-${gameId}`);
-			channel.send({ type: 'broadcast', event: 'location_update', payload: update });
-		  },
-		  (err) => console.error('Geolocation error after pickup:', err),
-		  { enableHighAccuracy: true, maximumAge: 0 }
-		);
-	} catch (err) {
-		console.error('Failed to handle pickup:', err);
-	} finally {
-		target.disabled = false;
-	}
+        getRoute(gameId, { lat: coords.latitude, lng: coords.longitude }, newStatus);
+        const channel = supaClient.channel(`game-${gameId}`);
+        channel.send({ type: 'broadcast', event: 'location_update', payload: update });
+      },
+      (err) => console.error('Geolocation error after pickup:', err),
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
+  } finally {
+    target.disabled = false;
+  }
   return;
 }
 
@@ -506,16 +531,20 @@ if (target.classList.contains('pickup')) {
 
 // --- 12. ADD A NEW GAME ---
 addGameForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const formData = new FormData(addGameForm);
-    const newGame = {
-        date: formData.get('date'), location: formData.get('location'), description: formData.get('description'),
-        user_id: currentUser.id, created_by: currentUser.user_metadata.username,
-        availability: { going: [], maybe: [], cant_make_it: [] }
-    };
-    await supaClient.from('games').insert(newGame);
-    addGameForm.reset();
-    fetchGames();
+  event.preventDefault();
+  const formData = new FormData(addGameForm);
+  const newGame = {
+    date: formData.get('date'),
+    location: formData.get('location'),
+    description: formData.get('description'),
+    user_id: currentUser.id,
+    created_by: currentUser.user_metadata.username,
+    is_driver: document.getElementById('game-is-driver')?.checked === true,
+    availability: { going: [], maybe: [], cant_make_it: [] }
+  };
+  await supaClient.from('games').insert(newGame);
+  addGameForm.reset();
+  fetchGames();
 });
 
 // --- 13. EDIT MODAL LOGIC ---
