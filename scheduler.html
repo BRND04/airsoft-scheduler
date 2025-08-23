@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Airsoft Game Day Scheduler</title>
-    <link rel="stylesheet" href="style.css">
+    
+    <!-- Leaflet.js links have been REMOVED -->
+
+    <link rel="stylesheet" href="style.css?v=no-map-fix">
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -41,7 +44,6 @@
                 </div>
                 <div class="form-group">
                     <label for="game-description">Notes</label>
-                    <!-- PLACEHOLDER ADDED HERE -->
                     <textarea id="game-description" name="description" placeholder="Any notes to add?"></textarea>
                 </div>
                 <button type="submit">Add Game Day</button>
@@ -74,7 +76,6 @@
                 </div>
                 <div class="form-group">
                     <label for="edit-game-description">Notes</label>
-                    <!-- PLACEHOLDER ADDED HERE -->
                     <textarea id="edit-game-description" placeholder="Any notes to add?"></textarea>
                 </div>
                 <div class="modal-actions">
@@ -104,6 +105,6 @@
     </div>
 
 
-    <script src="scheduler.js"></script>
+    <script src="scheduler.js?v=no-map-fix"></script>
 </body>
 </html>
