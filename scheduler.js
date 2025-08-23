@@ -40,11 +40,34 @@ supaClient.auth.onAuthStateChange((event, session) => {
 });
 
 // --- 5. COLLAPSIBLE FORM LOGIC ---
-formHeader.addEventListener('click', (e) => {
-    if (e.target.closest('button') || e.target.closest('h2')) {
-        addGameForm.classList.toggle('collapsed');
-    }
+const collapseBtn = document.getElementById('collapse-form-btn');
+const chevronIcon = collapseBtn.querySelector('i');
+
+/** Keep header + chevron in sync */
+function setFormCollapsed(collapsed) {
+  addGameForm.classList.toggle('collapsed', collapsed);
+  chevronIcon.classList.toggle('fa-chevron-down', collapsed);
+  chevronIcon.classList.toggle('fa-chevron-up', !collapsed);
+  collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+}
+
+// collapsed by default on page load
+setFormCollapsed(true);
+
+// click the chevron
+collapseBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation(); // don't bubble to form
+  setFormCollapsed(!addGameForm.classList.contains('collapsed'));
 });
+
+// click the title text
+const headerTitle = formHeader.querySelector('h2');
+headerTitle.addEventListener('click', () => {
+  setFormCollapsed(!addGameForm.classList.contains('collapsed'));
+});
+
+
 
 // --- 6. REALTIME LOCATION LISTENER ---
 const listenForLocations = (gameId) => {
