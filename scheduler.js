@@ -20,7 +20,7 @@ window._pulseTest = true; // force ETA pulse for testing
 
 // --- 3. ROUTING VARIABLES ---
 let locationInterval = null; 
-const AREA_66_COORDS = [55.6080, -4.5055];
+const AREA_66_COORDS = [55.93111963638371, -4.085214589065147];
 const GRANT_COORDS = [55.58763831240875, -4.489699872812489];
 const LUC_COORDS = [55.5954546248295, -4.444951898993158];
 const legStatusByGame = {};
@@ -715,3 +715,4 @@ function showToast(msg) {
   document.body.appendChild(t);
   setTimeout(()=>t.remove(), 2800);
 }
+
